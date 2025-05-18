@@ -1,4 +1,8 @@
-import { AirClientOptions } from '@/types/api.types';
+export type AirClientOptions = {
+	baseUrl: string;
+	defaultToken?: string;
+	retrieveAuthToken: () => string;
+};
 
 interface ApiOptions extends RequestInit {
 	headers?: HeadersInit;
