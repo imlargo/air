@@ -42,13 +42,7 @@ export class Air {
 			return responseData as T;
 		}
 
-		const error: ApiErrorResponse = {
-			code: responseData.code || 'UNKNOWN_ERROR',
-			message: responseData.message || 'An unknown error occurred',
-			payload: responseData.payload
-		};
-
-		throw error;
+		throw responseData;
 	}
 
 	private prepareRequestBody(data: any): any {
@@ -79,13 +73,6 @@ export class Air {
 
 			return this.handleResponse<T>(response);
 		} catch (error) {
-			if (error instanceof Error && !(error as any).code) {
-				throw {
-					code: 'NETWORK_ERROR',
-					message: error.message,
-					payload: { originalError: error.toString() }
-				} as ApiErrorResponse;
-			}
 			throw error;
 		}
 	}
