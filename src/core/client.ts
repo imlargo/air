@@ -13,7 +13,7 @@ interface ApiOptions extends RequestInit {
 
 export class Air {
 	private baseUrl: string;
-	private defaultToken: string;
+	private defaultAuthToken: string;
 	private retrieveAuthToken: () => string;
 
 	/**
@@ -23,7 +23,7 @@ export class Air {
 	 */
 	constructor(options: AirClientOptions) {
 		this.baseUrl = options.baseUrl;
-		this.defaultToken = options.defaultToken || '';
+		this.defaultAuthToken = options.defaultToken || '';
 		this.retrieveAuthToken = options.retrieveAuthToken;
 	}
 
@@ -33,7 +33,7 @@ export class Air {
 	private createHeaders(options: ApiOptions = {}, accessToken: string = ''): HeadersInit {
 		const localToken = this.retrieveAuthToken();
 		const token =
-			localToken && localToken !== '' ? localToken : accessToken || this.defaultToken;
+			localToken && localToken !== '' ? localToken : accessToken || this.defaultAuthToken;
 
 		// Verificar si el body es FormData para no enviar Content-Type
 		const isFormData = options.body instanceof FormData;
