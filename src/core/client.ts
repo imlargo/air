@@ -1,3 +1,5 @@
+import { AirClientOptions } from '@/types/api.types';
+
 // Definición de tipos para el formato de error del backend
 interface ApiErrorResponse {
 	code: string;
@@ -9,12 +11,6 @@ interface ApiOptions extends RequestInit {
 	headers?: HeadersInit;
 }
 
-type ApiClientOptions = {
-	baseUrl: string;
-	defaultToken?: string;
-	retrieveAuthToken: () => string;
-};
-
 export class Air {
 	private baseUrl: string;
 	private defaultToken: string;
@@ -25,7 +21,7 @@ export class Air {
 	 * @param baseUrl URL base para todas las peticiones
 	 * @param defaultToken Token de autenticación por defecto
 	 */
-	constructor(options: ApiClientOptions) {
+	constructor(options: AirClientOptions) {
 		this.baseUrl = options.baseUrl;
 		this.defaultToken = options.defaultToken || '';
 		this.retrieveAuthToken = options.retrieveAuthToken;
