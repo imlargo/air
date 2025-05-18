@@ -1,11 +1,5 @@
 import { AirClientOptions } from '@/types/api.types';
 
-interface ApiErrorResponse {
-	code: string;
-	message: string;
-	payload?: Record<string, any>;
-}
-
 interface ApiOptions extends RequestInit {
 	headers?: HeadersInit;
 }
