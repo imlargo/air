@@ -6,7 +6,8 @@
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
 		"lint": "eslint",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"build": "tsup"
 	},
 	"keywords": [],
 	"author": "",
@@ -17,6 +18,7 @@
 		"eslint": "^9.27.0",
 		"globals": "^16.1.0",
 		"prettier": "3.5.3",
+		"tsup": "^8.5.0",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "^8.32.1"
 	}
