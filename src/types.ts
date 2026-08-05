@@ -4,11 +4,16 @@ export type QueryValue = string | number | boolean | null | undefined
 
 export type Query = Record<string, QueryValue | readonly QueryValue[]>
 
+// A function so a long-lived client (`air.create({ headers })`) can hand back a
+// fresh value — e.g. the current bearer token — on every request instead of the
+// one captured when the client was created.
+export type HeaderSource = HeadersInit | (() => HeadersInit | Promise<HeadersInit>)
+
 export interface AirOptions extends Omit<RequestInit, 'body' | 'headers'> {
   baseURL?: string
   query?: Query
   body?: unknown
-  headers?: HeadersInit
+  headers?: HeaderSource
   parse?: ParseMode
 }
 
