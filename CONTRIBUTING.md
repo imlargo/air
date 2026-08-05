@@ -54,7 +54,7 @@ const created = await air.post<User>('https://api.example.com/users', {
 // Client instances
 const api = air.create({
   baseURL: 'https://api.example.com',
-  headers: { Authorization: `Bearer ${token}` },
+  headers: () => ({ Authorization: `Bearer ${getToken()}` }),
 })
 
 const user = await api.get<User>('/users/1')
@@ -66,7 +66,8 @@ const results = await api.get<Page<User>>('/users', {
 Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirOptions`, `AirRequest`, `Query`, `QueryValue`, `ParseMode`. Nothing else.
+types `AirClient`, `AirOptions`, `AirRequest`, `HeaderSource`, `Query`, `QueryValue`,
+`ParseMode`. Nothing else.
 
 A client from `air.create()` has the same shape as `air` itself — callable, same shortcuts, and its
 own `create()` that inherits the parent's defaults without mutating it. The root `air` **is** a
@@ -77,15 +78,15 @@ second code path for the root export is how the two drift apart.
 
 Keep this list short. Adding to it requires justification.
 
-| Option    | Type                                                        | Notes                                                     |
-| --------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| `baseURL` | `string`                                                    | Joined with the path, no double slashes                   |
-| `method`  | `string`                                                    | Inferred by the shortcuts, uppercased before sending      |
-| `query`   | `Query`                                                     | Primitives and arrays of primitives only                  |
-| `body`    | `unknown`                                                   | Type auto-detected (see below)                            |
-| `headers` | `HeadersInit`                                               | Merged with client defaults, request wins                 |
-| `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched — never wrapped or bridged |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                          |
+| Option    | Type                                                        | Notes                                                        |
+| --------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
+| `baseURL` | `string`                                                    | Joined with the path, no double slashes                      |
+| `method`  | `string`                                                    | Inferred by the shortcuts, uppercased before sending         |
+| `query`   | `Query`                                                     | Primitives and arrays of primitives only                     |
+| `body`    | `unknown`                                                   | Type auto-detected (see below)                               |
+| `headers` | `HeaderSource`                                              | Merged with client defaults, request wins; may be a function |
+| `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched — never wrapped or bridged    |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                             |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
 
@@ -113,6 +114,26 @@ just to smuggle the signal back out. The loop is five lines in userland; the REA
 
 The lesson generalizes: **moving a decision out of the client only works if the information behind
 it moves out too.** Before extracting anything into a helper, check which of the two it needs.
+
+### Lazy headers
+
+`headers` accepts a function (`() => HeadersInit | Promise<HeadersInit>`), not just a plain
+`HeadersInit`, so a long-lived client stays correct when the value changes after it was
+created — the concrete case is a bearer token that gets refreshed. A plain object baked into
+`air.create()`'s defaults is evaluated once, at `create()` time, and frozen in the closure from
+then on; every request after the token rotates sends the stale one. This is the same class of
+dead end the counterweight principle calls out at the top of this document: no amount of
+minimalism was going to surface it by asking "what can we remove?" — it took a user asking "my
+client outlives the token, now what?"
+
+The fix stays inside the existing `headers` option instead of growing a new one, and resolves
+lazily rather than at merge time: `mergeHeaders` in `client.ts` always returns a closure, never
+a `Headers` instance, so combining a client's header source with a request's — or with another
+client's, through a chain of `create()` calls — defers every side's evaluation until the request
+that actually needs it. Resolving eagerly at merge time would silently reintroduce the frozen
+token, just one layer removed; that is exactly the bug being fixed, so watch for it if this code
+changes. It does **not** generalize to a `beforeRequest` hook or any other option: the fix is
+narrowly "this one option may be a function," not a new lifecycle stage.
 
 ---
 
@@ -148,6 +169,16 @@ These are the details that make the library feel good. Get them exactly right.
 - Note for callers: TypeScript gives object type aliases an implicit index signature but never gives
   interfaces one, so `query` accepts a `type` and rejects an `interface`. Documented in the README;
   not worth making `AirOptions` generic to work around.
+
+### Headers
+
+- `headers` merges with the client's defaults, request wins on a shared key, for every
+  `HeadersInit` shape — a plain object, a `Headers` instance, or an array of tuples.
+- `headers` may also be a function (sync or async) returning one of the above; see Lazy headers.
+- Merging two header sources — client defaults and a request, or a client and a client it was
+  derived from — never resolves either side. `mergeHeaders` always returns a new closure; only
+  `request()` calls it, right before building the `Headers` object that goes to `fetch`. A chain
+  of `create()` calls nests closures without ever evaluating one early.
 
 ### Body detection
 
