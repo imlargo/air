@@ -185,14 +185,14 @@ These are the details that make the library feel good. Get them exactly right.
 Auto-detect the body type. Never re-serialize something that is already a valid `fetch` body:
 
 - **Plain objects and arrays** → `JSON.stringify`, and set `Content-Type: application/json` (only if the user hasn't set one).
-- **`FormData`** → pass through untouched, and **never set `Content-Type`**. The runtime must set it so the multipart boundary is correct. This is the most common bug in wrappers like this one — get it right.
+- **`FormData`** → pass through untouched, and **never set `Content-Type`** — not even one the
+  caller set explicitly. The runtime generates the multipart boundary at send time, so no literal
+  value the caller could write is ever correct; a caller-supplied `Content-Type` is deleted rather
+  than kept, which is the one header this library overrides instead of deferring to. This is the
+  most common bug in wrappers like this one — get it right.
 - **`URLSearchParams`, `Blob`, `File`, `ArrayBuffer`, typed arrays, `ReadableStream`, `string`** → pass through untouched, no `Content-Type` added.
 - **`undefined` and `null`** → no body sent. `null` matches `fetch`'s own meaning for `body: null`.
 - Never send a body on `GET` or `HEAD`.
-
-**Open:** a caller-supplied `Content-Type` always wins, including for `FormData` — where it silently
-breaks the multipart boundary, since only the runtime knows it. Whether to drop the caller's header
-in that one case is undecided. Ask before changing it.
 
 ### Response parsing
 

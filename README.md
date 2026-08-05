@@ -167,8 +167,8 @@ to `Query`.
 Plain objects and arrays are JSON-stringified and get `Content-Type: application/json`
 unless you set one yourself. `FormData`, `URLSearchParams`, `Blob`, `File`, `ArrayBuffer`,
 typed arrays, `ReadableStream` and strings are passed through untouched — in particular
-`FormData` never gets a `Content-Type`, so the runtime can set the multipart boundary.
-`GET` and `HEAD` never send a body.
+`FormData` never gets a `Content-Type`, even one you set yourself, so the runtime can set
+the multipart boundary. `GET` and `HEAD` never send a body.
 
 ### Response
 

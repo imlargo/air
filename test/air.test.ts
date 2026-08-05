@@ -189,6 +189,19 @@ describe('body', () => {
     )
   })
 
+  it('discards a caller-supplied content-type for FormData', async () => {
+    const requests = mockFetch()
+    const form = new FormData()
+    form.set('name', 'Ada')
+    await air.post('https://api.test/upload', {
+      body: form,
+      headers: { 'content-type': 'multipart/form-data' },
+    })
+    expect(requests[0]!.headers.get('content-type')).toMatch(
+      /^multipart\/form-data; boundary=/,
+    )
+  })
+
   it('passes URLSearchParams through untouched', async () => {
     const requests = mockFetch()
     await air.post('https://api.test/token', { body: new URLSearchParams({ a: '1' }) })
