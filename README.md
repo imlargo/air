@@ -5,6 +5,7 @@ A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 - Zero runtime dependencies
 - Auto-parsing, auto body detection
 - Non-2xx responses throw
+- Timeouts and retries compose from the outside — they are not options
 - Works in Node 18+, browsers, Deno, Bun and edge runtimes
 
 ```bash
@@ -45,29 +46,88 @@ const admin = api.create({ headers: { 'X-Scope': 'admin' } }) // inherits baseUR
 
 ## Options
 
-| Option    | Type                                                      | Notes                                   |
-| --------- | --------------------------------------------------------- | --------------------------------------- |
-| `baseURL` | `string`                                                  | Joined with the path, no double slashes |
-| `method`  | `string`                                                  | Inferred by the shortcuts               |
-| `query`   | `Record<string, unknown>`                                 | Serialized into the search params       |
-| `body`    | `unknown`                                                 | Type auto-detected                      |
-| `headers` | `HeadersInit`                                             | Merged with client defaults             |
-| `signal`  | `AbortSignal`                                             | Passed through to `fetch`               |
-| `timeout` | `number`                                                  | Milliseconds                            |
-| `retry`   | `number`                                                  | Retry count for transient failures      |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection        |
+| Option    | Type                                                        | Notes                                   |
+| --------- | ----------------------------------------------------------- | --------------------------------------- |
+| `baseURL` | `string`                                                    | Joined with the path, no double slashes |
+| `method`  | `string`                                                    | Inferred by the shortcuts               |
+| `query`   | `Query`                                                     | Primitives and arrays of primitives     |
+| `body`    | `unknown`                                                   | Type auto-detected                      |
+| `headers` | `HeadersInit`                                               | Merged with client defaults             |
+| `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched          |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection        |
 
 Anything else is forwarded to the underlying `fetch` call.
 
+### Timeouts
+
+There is no `timeout` option, because the platform already has one:
+
+```ts
+await api.get('/users', { signal: AbortSignal.timeout(5000) })
+```
+
+To combine a timeout with your own cancellation, compose the signals — `AbortSignal.any`
+needs Node 20+:
+
+```ts
+await api.get('/users', {
+  signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+})
+```
+
+`air` forwards `signal` to `fetch` untouched, so the abort covers the whole request,
+including a slow body download.
+
+### Retries
+
+`retry` is a standalone function that takes a callback. It knows nothing about `air`, so it
+composes with anything that returns a promise.
+
+```ts
+import air, { retry, isRetryable, isAirError } from 'air'
+
+const user = await retry(() => api.get<User>('/users/1'), {
+  attempts: 3,
+  delay: (attempt) => 2 ** attempt * 100, // your policy, not ours
+})
+```
+
+| Option     | Default       | Notes                                          |
+| ---------- | ------------- | ---------------------------------------------- |
+| `attempts` | `3`           | Total attempts, not extra ones                 |
+| `delay`    | `0`           | Milliseconds, or `(attempt) => ms` for backoff |
+| `when`     | `isRetryable` | `(error) => boolean`                           |
+
+`isRetryable` accepts network failures, timeouts, `408`, `429` and `5xx`, and rejects
+aborts and every other client error. It is exported so you can build on it:
+
+```ts
+retry(() => api.post('/jobs', { body }), {
+  when: (error) => isRetryable(error) && !(isAirError(error) && error.status === 429),
+})
+```
+
+Because the callback runs once per attempt, anything built inside it is rebuilt per attempt —
+which is exactly what you want for a timeout, since a signal that has already fired stays
+fired:
+
+```ts
+retry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), { attempts: 3 })
+```
+
 ### Query
 
-Existing search params are preserved, `undefined` and `null` are dropped, and arrays
-produce repeated keys.
+Existing search params are preserved, `undefined` and `null` are dropped, and arrays produce
+repeated keys.
 
 ```ts
 air.get('/search?q=air', { query: { tags: ['a', 'b'], page: 2, cursor: null } })
 // /search?q=air&tags=a&tags=b&page=2
 ```
+
+Only primitives and arrays of primitives are allowed. Objects and `Date`s are a compile
+error rather than a silent `[object Object]` — serialize them yourself
+(`{ since: date.toISOString() }`).
 
 ### Body
 
@@ -80,12 +140,19 @@ typed arrays, `ReadableStream` and strings are passed through untouched — in p
 ### Response
 
 Parsed from the response `Content-Type`: JSON for `application/json` and `+json` suffixes,
-text for `text/*`, a `Blob` otherwise. `204` and empty bodies resolve to `null`. Use
-`parse` to override.
+text for `text/*`, a `Blob` otherwise. `204` and empty bodies resolve to `null`.
+
+Use `parse: 'response'` when you need the response itself — headers on a successful call,
+or the raw stream:
+
+```ts
+const response = await api.get<Response>('/users', { parse: 'response' })
+response.headers.get('link')
+```
 
 ### Errors
 
-Non-2xx responses, network failures and timeouts all throw an `AirError`.
+Non-2xx responses, network failures, timeouts and aborts all throw an `AirError`.
 
 ```ts
 import { isAirError } from 'air'
@@ -99,12 +166,13 @@ try {
     error.data // parsed error body, if any
     error.request // { url, options }
     error.response // the raw Response, for escape hatches
+    error.cause // the underlying failure, for network errors and aborts
   }
 }
 ```
 
-`retry` re-sends the request on network errors, timeouts, `408`, `429` and `5xx`. It never
-retries after an abort.
+`isAirError` matches on a `Symbol.for('air.error')` brand rather than `instanceof`, so it
+still works when an app ends up with both the ESM and the CJS copy of the package loaded.
 
 ### Types
 
@@ -118,7 +186,7 @@ air.get('/users') // Promise<unknown> — never `any`
 The source is ESM-first; CJS is emitted for compatibility.
 
 ```js
-const { air } = require('air')
+const { air, retry } = require('air')
 ```
 
 ## Development
