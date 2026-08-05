@@ -25,7 +25,10 @@ await section('query serialization', async () => {
   const posts = await air.get('https://jsonplaceholder.typicode.com/posts', {
     query: { userId: 1, _limit: 2 },
   })
-  console.log(`${posts.length} post(s):`, posts.map((p) => p.title))
+  console.log(
+    `${posts.length} post(s):`,
+    posts.map((p) => p.title),
+  )
 })
 
 await section('a client with baseURL + default headers', async () => {
