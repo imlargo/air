@@ -485,6 +485,62 @@ describe('clients', () => {
     expect(requests[0]!.headers.get('x-scope')).toBe('admin')
   })
 
+  it('re-evaluates a header function on every request', async () => {
+    const requests = mockFetch()
+    let token = 'first'
+    const api = air.create({ headers: () => ({ Authorization: `Bearer ${token}` }) })
+
+    await api.get('https://api.test/a')
+    token = 'second'
+    await api.get('https://api.test/a')
+
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer first')
+    expect(requests[1]!.headers.get('authorization')).toBe('Bearer second')
+  })
+
+  it('awaits an async header function', async () => {
+    const requests = mockFetch()
+    const api = air.create({
+      headers: async () => {
+        await Promise.resolve()
+        return { Authorization: 'Bearer async-token' }
+      },
+    })
+
+    await api.get('https://api.test/a')
+
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer async-token')
+  })
+
+  it('combines a client header function with a static request header', async () => {
+    const requests = mockFetch()
+    let token = 'first'
+    const api = air.create({ headers: () => ({ Authorization: `Bearer ${token}` }) })
+
+    await api.get('https://api.test/a', { headers: { 'X-Client': 'air' } })
+    token = 'second'
+    await api.get('https://api.test/a', { headers: { 'X-Client': 'air' } })
+
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer first')
+    expect(requests[0]!.headers.get('x-client')).toBe('air')
+    expect(requests[1]!.headers.get('authorization')).toBe('Bearer second')
+  })
+
+  it('keeps every header source lazy through a chain of create() calls', async () => {
+    const requests = mockFetch()
+    let token = 'first'
+    const base = air.create({ headers: () => ({ Authorization: `Bearer ${token}` }) })
+    const admin = base.create({ headers: () => ({ 'X-Scope': 'admin' }) })
+
+    await admin.get('https://api.test/a')
+    token = 'second'
+    await admin.get('https://api.test/a')
+
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer first')
+    expect(requests[0]!.headers.get('x-scope')).toBe('admin')
+    expect(requests[1]!.headers.get('authorization')).toBe('Bearer second')
+  })
+
   it('creates an empty client', async () => {
     const requests = mockFetch()
     const api = air.create()
