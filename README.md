@@ -5,7 +5,7 @@ A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 - Zero runtime dependencies
 - Auto-parsing, auto body detection
 - Non-2xx responses throw
-- Timeouts and retries compose from the outside — they are not options
+- No timeout or retry machinery — `AbortSignal` and a `for` loop already do that
 - Works in Node 18+, browsers, Deno, Bun and edge runtimes
 
 ```bash
@@ -80,39 +80,33 @@ including a slow body download.
 
 ### Retries
 
-`retry` is a standalone function that takes a callback. It knows nothing about `air`, so it
-composes with anything that returns a promise.
+`air` ships no retry helper. A loop in your own code is shorter than any API we could offer
+for it, and it has something a generic helper cannot have: your `AbortSignal` in scope, so
+it can tell a transient failure apart from a request you cancelled on purpose.
 
 ```ts
-import air, { retry, isRetryable, isAirError } from 'air'
+import air, { isAirError } from 'air'
 
-const user = await retry(() => api.get<User>('/users/1'), {
-  attempts: 3,
-  delay: (attempt) => 2 ** attempt * 100, // your policy, not ours
-})
+const transient = (error: unknown) =>
+  isAirError(error) && (error.status === undefined || error.status >= 500)
+
+async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (attempt >= attempts || signal.aborted || !transient(error)) throw error
+      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100))
+    }
+  }
+}
 ```
 
-| Option     | Default       | Notes                                          |
-| ---------- | ------------- | ---------------------------------------------- |
-| `attempts` | `3`           | Total attempts, not extra ones                 |
-| `delay`    | `0`           | Milliseconds, or `(attempt) => ms` for backoff |
-| `when`     | `isRetryable` | `(error) => boolean`                           |
-
-`isRetryable` accepts network failures, timeouts, `408`, `429` and `5xx`, and rejects
-aborts and every other client error. It is exported so you can build on it:
+Build the request inside the callback so each attempt gets a fresh signal — a signal that has
+already fired stays fired:
 
 ```ts
-retry(() => api.post('/jobs', { body }), {
-  when: (error) => isRetryable(error) && !(isAirError(error) && error.status === 429),
-})
-```
-
-Because the callback runs once per attempt, anything built inside it is rebuilt per attempt —
-which is exactly what you want for a timeout, since a signal that has already fired stays
-fired:
-
-```ts
-retry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), { attempts: 3 })
+await withRetry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), signal)
 ```
 
 ### Query
