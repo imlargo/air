@@ -1,4 +1,8 @@
-const ABSOLUTE = /^[a-z][a-z\d+\-.]*:\/\//i
+import type { Query } from './types.js'
+
+// The scheme is optional so that protocol-relative paths ("//cdn.example.com/x") count as
+// absolute too. Joining one to a baseURL would silently point at the wrong host.
+const ABSOLUTE = /^([a-z][a-z\d+\-.]*:)?\/\//i
 
 export function joinURL(baseURL: string | undefined, path: string): string {
   if (!baseURL || ABSOLUTE.test(path)) return path
@@ -6,11 +10,7 @@ export function joinURL(baseURL: string | undefined, path: string): string {
   return `${baseURL.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
-export function buildURL(
-  path: string,
-  baseURL?: string,
-  query?: Record<string, unknown>,
-): string {
+export function buildURL(path: string, baseURL?: string, query?: Query): string {
   const url = joinURL(baseURL, path)
   if (!query) return url
 
