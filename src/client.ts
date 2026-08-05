@@ -2,12 +2,22 @@ import { prepareBody } from './body.js'
 import { AirError } from './error.js'
 import { parseResponse } from './parse.js'
 import { buildURL } from './url.js'
-import type { AirClient, AirOptions } from './types.js'
+import type { AirClient, AirOptions, HeaderSource } from './types.js'
 
-function mergeHeaders(base?: HeadersInit, extra?: HeadersInit): Headers {
-  const headers = new Headers(base)
-  new Headers(extra).forEach((value, key) => headers.set(key, value))
-  return headers
+const resolveHeaders = async (source?: HeaderSource): Promise<HeadersInit | undefined> =>
+  typeof source === 'function' ? source() : source
+
+// Stays a function even when both sides are static, so a header source is never
+// resolved until the request that actually needs it — including through a chain
+// of create() calls, each adding its own source on top of the last.
+function mergeHeaders(base?: HeaderSource, extra?: HeaderSource): () => Promise<Headers> {
+  return async () => {
+    const headers = new Headers(await resolveHeaders(base))
+    new Headers(await resolveHeaders(extra)).forEach((value, key) =>
+      headers.set(key, value),
+    )
+    return headers
+  }
 }
 
 function merge(base: AirOptions, extra?: AirOptions): AirOptions {
@@ -34,7 +44,7 @@ async function request<T>(path: string, options: AirOptions): Promise<T> {
   const verb = method.toUpperCase()
   const info = { url, options }
 
-  const requestHeaders = new Headers(headers)
+  const requestHeaders = new Headers(await resolveHeaders(headers))
   let payload: BodyInit | undefined
   if (verb !== 'GET' && verb !== 'HEAD') {
     const prepared = prepareBody(body)
