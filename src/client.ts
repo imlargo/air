@@ -49,7 +49,9 @@ async function request<T>(path: string, options: AirOptions): Promise<T> {
   if (verb !== 'GET' && verb !== 'HEAD') {
     const prepared = prepareBody(body)
     payload = prepared.body
-    if (prepared.contentType && !requestHeaders.has('content-type')) {
+    if (prepared.stripContentType) {
+      requestHeaders.delete('content-type')
+    } else if (prepared.contentType && !requestHeaders.has('content-type')) {
       requestHeaders.set('content-type', prepared.contentType)
     }
   }
