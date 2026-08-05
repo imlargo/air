@@ -123,6 +123,10 @@ Only primitives and arrays of primitives are allowed. Objects and `Date`s are a 
 error rather than a silent `[object Object]` — serialize them yourself
 (`{ since: date.toISOString() }`).
 
+Type your params with `type`, not `interface`: TypeScript gives object type aliases an
+implicit index signature, and interfaces never get one, so an `interface` is not assignable
+to `Query`.
+
 ### Body
 
 Plain objects and arrays are JSON-stringified and get `Content-Type: application/json`
@@ -180,7 +184,7 @@ air.get('/users') // Promise<unknown> — never `any`
 The source is ESM-first; CJS is emitted for compatibility.
 
 ```js
-const { air, retry } = require('air')
+const { air } = require('air')
 ```
 
 ## Development
