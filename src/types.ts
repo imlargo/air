@@ -1,12 +1,14 @@
-export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream'
+export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'response'
+
+export type QueryValue = string | number | boolean | null | undefined
+
+export type Query = Record<string, QueryValue | readonly QueryValue[]>
 
 export interface AirOptions extends Omit<RequestInit, 'body' | 'headers'> {
   baseURL?: string
-  query?: Record<string, unknown>
+  query?: Query
   body?: unknown
   headers?: HeadersInit
-  timeout?: number
-  retry?: number
   parse?: ParseMode
 }
 

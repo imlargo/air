@@ -1,10 +1,8 @@
 import { prepareBody } from './body.js'
-import { AirError, isAirError } from './error.js'
+import { AirError } from './error.js'
 import { parseResponse } from './parse.js'
 import { buildURL } from './url.js'
 import type { AirClient, AirOptions } from './types.js'
-
-const TIMEOUT = Symbol('timeout')
 
 function mergeHeaders(base?: HeadersInit, extra?: HeadersInit): Headers {
   const headers = new Headers(base)
@@ -22,25 +20,15 @@ function merge(base: AirOptions, extra?: AirOptions): AirOptions {
   }
 }
 
-function isRetryable(error: unknown): boolean {
-  if (!isAirError(error)) return false
-  const { status } = error
-  return status === undefined || status >= 500 || status === 408 || status === 429
+function describe(error: unknown, fallback: string): string {
+  const name = error instanceof Error ? error.name : ''
+  if (name === 'TimeoutError') return 'timed out'
+  if (name === 'AbortError') return 'was aborted'
+  return fallback
 }
 
 async function request<T>(path: string, options: AirOptions): Promise<T> {
-  const {
-    baseURL,
-    query,
-    timeout,
-    retry = 0,
-    parse,
-    body,
-    headers,
-    signal,
-    method = 'GET',
-    ...init
-  } = options
+  const { baseURL, query, parse, body, headers, method = 'GET', ...init } = options
 
   const url = buildURL(path, baseURL, query)
   const verb = method.toUpperCase()
@@ -56,62 +44,36 @@ async function request<T>(path: string, options: AirOptions): Promise<T> {
     }
   }
 
-  const send = async (): Promise<T> => {
-    const controller = new AbortController()
-    const abort = () => controller.abort(signal?.reason)
-    signal?.addEventListener('abort', abort)
-    const timer =
-      timeout === undefined
-        ? undefined
-        : setTimeout(() => controller.abort(TIMEOUT), timeout)
-
-    let response: Response
-    try {
-      response = await fetch(url, {
-        ...init,
-        method: verb,
-        headers: requestHeaders,
-        body: payload,
-        signal: controller.signal,
-      })
-    } catch (error) {
-      const reason =
-        controller.signal.reason === TIMEOUT
-          ? `timed out after ${timeout}ms`
-          : controller.signal.aborted
-            ? 'was aborted'
-            : `failed: ${error instanceof Error ? error.message : String(error)}`
-      throw new AirError(`${verb} ${url} ${reason}`, info, { cause: error })
-    } finally {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', abort)
-    }
-
-    if (!response.ok) {
-      const data = await parseResponse(response).catch(() => undefined)
-      throw new AirError(
-        `${verb} ${url} failed with ${response.status} ${response.statusText}`,
-        info,
-        { response, data },
-      )
-    }
-
-    try {
-      return (await parseResponse(response, parse)) as T
-    } catch (error) {
-      throw new AirError(`${verb} ${url} returned an unreadable body`, info, {
-        response,
-        cause: error,
-      })
-    }
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      method: verb,
+      headers: requestHeaders,
+      body: payload,
+    })
+  } catch (error) {
+    const reason = describe(
+      error,
+      `failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    throw new AirError(`${verb} ${url} ${reason}`, info, { cause: error })
   }
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await send()
-    } catch (error) {
-      if (attempt >= retry || signal?.aborted || !isRetryable(error)) throw error
-    }
+  if (!response.ok) {
+    const data = await parseResponse(response).catch(() => undefined)
+    throw new AirError(
+      `${verb} ${url} failed with ${response.status} ${response.statusText}`,
+      info,
+      { response, data },
+    )
+  }
+
+  try {
+    return (await parseResponse(response, parse)) as T
+  } catch (error) {
+    const reason = describe(error, 'returned an unreadable body')
+    throw new AirError(`${verb} ${url} ${reason}`, info, { response, cause: error })
   }
 }
 

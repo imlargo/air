@@ -83,6 +83,14 @@ describe('query', () => {
     expect(new URL(requests[0]!.url).searchParams.get('q')).toBe('a&b=c')
   })
 
+  it('rejects values it cannot serialize meaningfully', async () => {
+    mockFetch()
+    await air.get('https://api.test/s', {
+      // @ts-expect-error a Date has no obvious serialization — pass an ISO string
+      query: { when: new Date(0) },
+    })
+  })
+
   it('merges client defaults with per-request query', async () => {
     const requests = mockFetch()
     const api = air.create({ baseURL: 'https://api.test', query: { key: 'abc' } })
@@ -198,6 +206,21 @@ describe('parsing', () => {
     )
   })
 
+  it('resolves an empty body to null whatever the content type', async () => {
+    mockFetch(() => new Response(null, { status: 200 }))
+    await expect(air.get('https://api.test/a')).resolves.toBeNull()
+  })
+
+  it('hands back the raw Response when asked', async () => {
+    mockFetch(() => json({ id: 1 }, { headers: { 'x-total': '42' } }))
+
+    const response = await air.get<Response>('https://api.test/a', { parse: 'response' })
+
+    expect(response).toBeInstanceOf(Response)
+    expect(response.headers.get('x-total')).toBe('42')
+    await expect(response.json()).resolves.toEqual({ id: 1 })
+  })
+
   it('wraps an unreadable body in an AirError', async () => {
     mockFetch(
       () => new Response('not json', { headers: { 'content-type': 'application/json' } }),
@@ -232,7 +255,7 @@ describe('errors', () => {
   it('surfaces timeouts as AirError', async () => {
     mockFetch(stall)
     const error = await air
-      .get('https://api.test/slow', { timeout: 10 })
+      .get('https://api.test/slow', { signal: AbortSignal.timeout(10) })
       .catch((e: unknown) => e)
     expect(isAirError(error)).toBe(true)
     expect((error as AirError).message).toContain('timed out')
@@ -243,39 +266,54 @@ describe('errors', () => {
     const controller = new AbortController()
     const pending = air.get('https://api.test/slow', { signal: controller.signal })
     controller.abort()
-    await expect(pending).rejects.toBeInstanceOf(AirError)
+    await expect(pending).rejects.toThrow(/was aborted/)
+  })
+
+  it('recognises errors from another copy of the package', () => {
+    expect(isAirError({ [Symbol.for('air.error')]: true })).toBe(true)
+    expect(isAirError(new Error('boom'))).toBe(false)
+    expect(isAirError(null)).toBe(false)
   })
 })
 
-describe('retry', () => {
-  it('retries transient failures up to the given count', async () => {
-    let attempts = 0
-    const requests = mockFetch(() => {
-      attempts++
-      return attempts < 3 ? json({}, { status: 503 }) : json({ ok: true })
-    })
-
-    await expect(air.get('https://api.test/a', { retry: 2 })).resolves.toEqual({
-      ok: true,
-    })
-    expect(requests).toHaveLength(3)
-  })
-
-  it('does not retry client errors', async () => {
-    const requests = mockFetch(() => json({}, { status: 404 }))
-    await expect(air.get('https://api.test/a', { retry: 2 })).rejects.toBeInstanceOf(
-      AirError,
-    )
-    expect(requests).toHaveLength(1)
-  })
-
-  it('does not retry after an abort', async () => {
-    const requests = mockFetch(stall)
+describe('signals', () => {
+  it('hands the signal to fetch untouched', async () => {
     const controller = new AbortController()
-    const pending = air.get('https://api.test/a', { signal: controller.signal, retry: 2 })
-    controller.abort()
-    await expect(pending).rejects.toBeInstanceOf(AirError)
-    expect(requests).toHaveLength(1)
+    let seen: RequestInit | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen = init
+        return json({})
+      }),
+    )
+
+    await air.get('https://api.test/a', { signal: controller.signal })
+
+    expect(seen?.signal).toBe(controller.signal)
+  })
+
+  it('aborts a slow body read', async () => {
+    const controller = new AbortController()
+    mockFetch(
+      (request) =>
+        new Response(
+          new ReadableStream({
+            start: (stream) => {
+              stream.enqueue(new TextEncoder().encode('{"a":'))
+              request.signal.addEventListener('abort', () =>
+                stream.error(request.signal.reason),
+              )
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    )
+
+    const pending = air.get('https://api.test/slow', { signal: controller.signal })
+    setTimeout(() => controller.abort(), 10)
+
+    await expect(pending).rejects.toThrow(/was aborted/)
   })
 })
 

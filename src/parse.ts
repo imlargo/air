@@ -11,15 +11,18 @@ export async function parseResponse(
   response: Response,
   parse?: ParseMode,
 ): Promise<unknown> {
+  if (parse === 'response') return response
   if (response.status === 204) return null
 
   switch (parse ?? detect(response.headers.get('content-type'))) {
-    case 'stream':
-      return response.body
-    case 'blob':
-      return response.blob()
-    case 'arrayBuffer':
-      return response.arrayBuffer()
+    case 'blob': {
+      const blob = await response.blob()
+      return blob.size ? blob : null
+    }
+    case 'arrayBuffer': {
+      const buffer = await response.arrayBuffer()
+      return buffer.byteLength ? buffer : null
+    }
     case 'text':
       return (await response.text()) || null
     default: {

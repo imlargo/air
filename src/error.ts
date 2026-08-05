@@ -1,5 +1,7 @@
 import type { AirRequest } from './types.js'
 
+const BRAND = Symbol.for('air.error')
+
 interface AirErrorInit<T> {
   response?: Response
   data?: T
@@ -21,9 +23,13 @@ export class AirError<T = unknown> extends Error {
     this.status = init.response?.status
     this.statusText = init.response?.statusText
     this.data = init.data
+
+    // Branded rather than detected with instanceof: an app can end up holding both
+    // the ESM and the CJS copy of air, each with its own AirError class.
+    Object.defineProperty(this, BRAND, { value: true })
   }
 }
 
 export function isAirError<T = unknown>(error: unknown): error is AirError<T> {
-  return error instanceof AirError
+  return typeof error === 'object' && error !== null && BRAND in error
 }

@@ -26,5 +26,6 @@ export function json(data: unknown, init?: ResponseInit): Response {
 
 export const stall: Handler = (request) =>
   new Promise((_, reject) => {
+    if (request.signal.aborted) return reject(request.signal.reason)
     request.signal.addEventListener('abort', () => reject(request.signal.reason))
   })
