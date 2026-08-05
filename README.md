@@ -36,7 +36,7 @@ same shortcuts, and its own `create()` for deriving further clients.
 ```ts
 const api = air.create({
   baseURL: 'https://api.example.com',
-  headers: { Authorization: `Bearer ${token}` },
+  headers: () => ({ Authorization: `Bearer ${getToken()}` }),
 })
 
 const user = await api.get<User>('/users/1')
@@ -44,6 +44,9 @@ const page = await api.get<Page<User>>('/users', { query: { page: 2, active: tru
 
 const admin = api.create({ headers: { 'X-Scope': 'admin' } }) // inherits baseURL + headers
 ```
+
+`headers` can be a function instead of a plain object. `air` calls it on every request, so a
+long-lived client stays correct across a token refresh — see [Headers](#headers) below.
 
 ## Options
 
@@ -53,7 +56,7 @@ const admin = api.create({ headers: { 'X-Scope': 'admin' } }) // inherits baseUR
 | `method`  | `string`                                                    | Inferred by the shortcuts               |
 | `query`   | `Query`                                                     | Primitives and arrays of primitives     |
 | `body`    | `unknown`                                                   | Type auto-detected                      |
-| `headers` | `HeadersInit`                                               | Merged with client defaults             |
+| `headers` | `HeaderSource`                                              | Merged with client defaults             |
 | `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched          |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection        |
 
@@ -109,6 +112,37 @@ already fired stays fired:
 ```ts
 await withRetry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), signal)
 ```
+
+### Headers
+
+`headers` merges with the client's defaults, the request winning on a shared key — same rule
+for every `HeadersInit` shape (`Headers`, a plain object, or an array of tuples).
+
+A plain object is evaluated once, when you write it. That is a problem for anything that
+changes after the client is created — a bearer token that gets refreshed, for instance:
+
+```ts
+// Wrong: the token at create() time is the token forever.
+const api = air.create({ headers: { Authorization: `Bearer ${getToken()}` } })
+```
+
+Pass a function instead, and `air` calls it on every request:
+
+```ts
+const api = air.create({ headers: () => ({ Authorization: `Bearer ${getToken()}` }) })
+```
+
+It can be async too, for a refresh that needs a network round trip:
+
+```ts
+const api = air.create({
+  headers: async () => ({ Authorization: `Bearer ${await getFreshToken()}` }),
+})
+```
+
+A header function on a client and a plain object (or another function) on a request, or on a
+client derived with `create()`, combine the same way static headers do — nothing is resolved,
+or frozen, until the request that actually needs it.
 
 ### Query
 
