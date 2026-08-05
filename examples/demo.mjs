@@ -40,6 +40,21 @@ await section('a client with baseURL + default headers', async () => {
   console.log(user.name, '—', user.email)
 })
 
+await section('a header function survives a token rotation', async () => {
+  let token = 'first-token'
+  const api = air.create({
+    baseURL: 'https://httpbin.org',
+    headers: () => ({ Authorization: `Bearer ${token}` }),
+  })
+
+  const before = await api.get('/headers')
+  token = 'rotated-token' // e.g. a refresh happened somewhere else in the app
+  const after = await api.get('/headers')
+
+  console.log('before rotation:', before.headers.Authorization)
+  console.log('after rotation:', after.headers.Authorization)
+})
+
 await section('POST with a JSON body (auto content-type)', async () => {
   const echoed = await air.post('https://httpbin.org/post', {
     body: { name: 'Ada', role: 'engineer' },
