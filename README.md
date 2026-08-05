@@ -62,6 +62,14 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 
 Anything else is forwarded to the underlying `fetch` call.
 
+The request target itself can be a `string` or a `URL` — whatever you already have on hand:
+
+```ts
+await air.get(new URL('/users/1', 'https://api.example.com'))
+```
+
+A `URL` is already absolute, so `baseURL` is skipped for it, same as for an absolute string.
+
 ### Timeouts
 
 There is no `timeout` option, because the platform already has one:

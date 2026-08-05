@@ -81,6 +81,24 @@ describe('url', () => {
     await api.get('/ping', { baseURL: 'https://other.test' })
     expect(requests[0]!.url).toBe('https://other.test/ping')
   })
+
+  it('accepts a URL instance as the request target', async () => {
+    const requests = mockFetch()
+    await air.get(new URL('https://api.test/users/1'))
+    expect(requests[0]!.url).toBe('https://api.test/users/1')
+  })
+
+  it('merges query onto a URL instance', async () => {
+    const requests = mockFetch()
+    await air.get(new URL('https://api.test/s?existing=1'), { query: { page: 2 } })
+    expect(requests[0]!.url).toBe('https://api.test/s?existing=1&page=2')
+  })
+
+  it('ignores baseURL when the target is a URL instance', async () => {
+    const requests = mockFetch()
+    await air.get(new URL('https://other.test/ping'), { baseURL: 'https://api.test' })
+    expect(requests[0]!.url).toBe('https://other.test/ping')
+  })
 })
 
 describe('query', () => {
@@ -358,6 +376,14 @@ describe('errors', () => {
     expect(failure.data).toEqual({ message: 'nope' })
     expect(failure.response).toBeInstanceOf(Response)
     expect(failure.request.url).toBe('https://api.test/users/1')
+  })
+
+  it('trims its own internal frame from the stack trace', async () => {
+    mockFetch(() => json({}, { status: 500 }))
+    const error = await air.get('https://api.test/a').catch((e: unknown) => e)
+    if (Error.captureStackTrace) {
+      expect((error as AirError).stack).not.toMatch(/\bat request\b/)
+    }
   })
 
   it('still throws when the error body cannot be parsed', async () => {

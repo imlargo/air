@@ -16,6 +16,7 @@ export default tseslint.config(
         Response: 'readonly',
         AbortSignal: 'readonly',
         FormData: 'readonly',
+        URL: 'readonly',
         setTimeout: 'readonly',
       },
     },

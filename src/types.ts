@@ -22,14 +22,18 @@ export interface AirRequest {
   options: AirOptions
 }
 
+// A URL is already absolute, so it needs no baseURL — the same string a caller
+// would get from url.toString(), just without having to write that themselves.
+export type AirURL = string | URL
+
 export interface AirClient {
-  <T = unknown>(url: string, options?: AirOptions): Promise<T>
-  get<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  post<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  put<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  patch<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  delete<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  head<T = unknown>(url: string, options?: AirOptions): Promise<T>
-  options<T = unknown>(url: string, options?: AirOptions): Promise<T>
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  get<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  post<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  put<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  patch<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  delete<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  head<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  options<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
   create(options?: AirOptions): AirClient
 }

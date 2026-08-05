@@ -2,7 +2,31 @@ import { prepareBody } from './body.js'
 import { AirError } from './error.js'
 import { parseResponse } from './parse.js'
 import { buildURL } from './url.js'
-import type { AirClient, AirOptions, HeaderSource } from './types.js'
+import type { AirClient, AirOptions, AirRequest, AirURL, HeaderSource } from './types.js'
+
+// V8-only (Node, Chrome, Edge); guarded at the call site. Declared locally
+// instead of pulling in @types/node, which would leak Node-only ambient globals
+// into a codebase that targets the browser and edge runtimes just as much.
+declare global {
+  interface ErrorConstructor {
+    captureStackTrace?(
+      targetObject: object,
+      constructorOpt?: (...args: never[]) => unknown,
+    ): void
+  }
+}
+
+// Throws with request()'s own frame trimmed from the stack, so it starts at the
+// caller's call site instead of inside air.
+function fail(
+  message: string,
+  info: AirRequest,
+  init?: ConstructorParameters<typeof AirError>[2],
+): never {
+  const error = new AirError(message, info, init)
+  Error.captureStackTrace?.(error, request)
+  throw error
+}
 
 const resolveHeaders = async (source?: HeaderSource): Promise<HeadersInit | undefined> =>
   typeof source === 'function' ? source() : source
@@ -37,10 +61,10 @@ function describe(error: unknown, fallback: string): string {
   return fallback
 }
 
-async function request<T>(path: string, options: AirOptions): Promise<T> {
+async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
   const { baseURL, query, parse, body, headers, method = 'GET', ...init } = options
 
-  const url = buildURL(path, baseURL, query)
+  const url = buildURL(typeof path === 'string' ? path : path.href, baseURL, query)
   const verb = method.toUpperCase()
   const info = { url, options }
 
@@ -69,33 +93,32 @@ async function request<T>(path: string, options: AirOptions): Promise<T> {
       error,
       `failed: ${error instanceof Error ? error.message : String(error)}`,
     )
-    throw new AirError(`${verb} ${url} ${reason}`, info, { cause: error })
+    fail(`${verb} ${url} ${reason}`, info, { cause: error })
   }
 
   if (!response.ok) {
     const data = await parseResponse(response).catch(() => undefined)
-    throw new AirError(
-      `${verb} ${url} failed with ${response.status} ${response.statusText}`,
-      info,
-      { response, data },
-    )
+    fail(`${verb} ${url} failed with ${response.status} ${response.statusText}`, info, {
+      response,
+      data,
+    })
   }
 
   try {
     return (await parseResponse(response, parse)) as T
   } catch (error) {
     const reason = describe(error, 'returned an unreadable body')
-    throw new AirError(`${verb} ${url} ${reason}`, info, { response, cause: error })
+    fail(`${verb} ${url} ${reason}`, info, { response, cause: error })
   }
 }
 
 export function create(defaults: AirOptions = {}): AirClient {
-  const call = <T = unknown>(url: string, options?: AirOptions): Promise<T> =>
+  const call = <T = unknown>(url: AirURL, options?: AirOptions): Promise<T> =>
     request<T>(url, merge(defaults, options))
 
   const shortcut =
     (method: string) =>
-    <T = unknown>(url: string, options?: AirOptions): Promise<T> =>
+    <T = unknown>(url: AirURL, options?: AirOptions): Promise<T> =>
       request<T>(url, { ...merge(defaults, options), method })
 
   return Object.assign(call, {

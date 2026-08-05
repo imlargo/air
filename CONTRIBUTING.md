@@ -66,8 +66,12 @@ const results = await api.get<Page<User>>('/users', {
 Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirOptions`, `AirRequest`, `HeaderSource`, `Query`, `QueryValue`,
+types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `HeaderSource`, `Query`, `QueryValue`,
 `ParseMode`. Nothing else.
+
+The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
+instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
+skipped, and `query` still merges onto whatever search params it already has.
 
 A client from `air.create()` has the same shape as `air` itself — callable, same shortcuts, and its
 own `create()` that inherits the parent's defaults without mutating it. The root `air` **is** a
@@ -227,6 +231,13 @@ two versions in the dependency tree, or a bundled copy alongside a resolved one 
 its own `AirError` class, so `instanceof` returns `false` across them. Detect a
 `Symbol.for('air.error')` brand instead: the registry is global, so every copy agrees on it.
 
+Every throw goes through `fail()` in `client.ts`, not a bare `throw new AirError(...)`. It calls
+`Error.captureStackTrace(error, request)` where available (V8: Node, Chrome, Edge), which trims
+`request()`'s own frame from the stack so it starts at the caller's call site instead of inside
+`air`. Guarded with `Error.captureStackTrace?.(...)`, since the method doesn't exist on other
+engines — and declared locally as an ambient global rather than pulling in `@types/node`, which
+would leak Node-only globals into a codebase that targets the browser and edge just as much.
+
 ### Type conventions
 
 ```ts
@@ -289,6 +300,61 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
 `ofetch` and `ky` solve the same problem and have already hit the edge cases we will hit. Reading them to understand _why_ a decision was made is encouraged.
 
 **But:** do not copy their code. Reimplement from understanding, in our own structure and naming. Our public surface should end up meaningfully smaller than `ofetch`'s — that's the whole point of the project. If a feature exists in `ofetch` and we can't justify it against the philosophy above, we don't ship it.
+
+### `ofetch` comparison
+
+A full read of `ofetch`'s source (`fetch.ts`, `error.ts`, `utils.ts`, `utils.url.ts`, `types.ts` —
+about 800 lines) turned up two things worth adopting and several worth naming as deliberately
+rejected, so the next person who reads `ofetch` doesn't re-propose them from scratch.
+
+**Adopted, reimplemented in our own shape:**
+
+- **Trimmed stack traces.** `ofetch` calls `Error.captureStackTrace(error, $fetchRaw)` so its
+  error's stack starts at the caller, not inside the library. Verified against air's own output
+  before the change: `air.get()` throwing showed `at request (client.ts:NN)` as the first frame,
+  ahead of the caller's own line — one internal frame of noise on every thrown error, for free to
+  remove. Air's `fail()` helper in `client.ts` does the same, guarded and without an `@types/node`
+  dependency (see Errors, above).
+- **`URL` as a request target.** Native `fetch` already accepts `RequestInfo | URL`; air's `url`
+  parameter was narrower than the primitive it wraps, for no reason tied to the philosophy. `ofetch`
+  accepts a full `Request` object too (`FetchRequest = RequestInfo`); air does not go that far — see
+  rejected list below.
+
+**Considered, rejected — do not re-open without new information:**
+
+- **Full `Request` object as input**, not just `URL`. A caller holding a complete `Request` already
+  has everything air would add (parsing, throwing) available to build themselves in a couple of
+  lines, and in practice already has a working `fetch(request)` sitting right there. `URL` covers
+  the real, common case — a server framework handing you a parsed URL — without absorbing the
+  interplay of a `Request`'s own method, headers and body against air's options.
+- **Lifecycle hooks** (`onRequest`/`onResponse`/`onRequestError`/`onResponseError`). This is the
+  interceptor-chain non-goal, confirmed rather than merely asserted: `ofetch`'s implementation
+  threads a `FetchContext` object through four optional hook slots and a `callHooks` utility just to
+  support them. That cost, seen in a real 280-line `fetch.ts`, is exactly why this library doesn't
+  carry it.
+- **`ignoreResponseError`.** A per-request escape hatch from "non-2xx throws." It doesn't unlock
+  anything air can't already do — `catch` + `isAirError` + `error.response` already gets you the
+  status and body of a failed request — and it dilutes the one headline promise of the library.
+- **`retryStatusCodes` / built-in retry and timeout.** Already removed from air; seeing `ofetch`'s
+  own retry loop (`fetch.ts`, `onError`) sniff `error.name === 'AbortError'` to decide whether a
+  failure was a deliberate cancellation is the same fragility that got `retry` removed here — real
+  external confirmation, not just our own prior incident.
+- **`dispatcher` / `agent`.** Node-only escape hatches for a custom `undici` dispatcher or HTTP
+  agent. Explicitly the Node-specific-features non-goal; these don't exist in browser `fetch` at
+  all. A Node caller who needs one can still pass it positionally today (anything unrecognized
+  forwards to `fetch`) — just without a typed field for it, which is the right trade-off for a
+  library that targets the browser and edge as first-class, not as an afterthought.
+- **`parseResponse` custom parser option.** Fully achievable in userland today: `parse: 'text'`
+  plus the caller's own `JSON.parse` (or a reviver, or a faster parser) is one extra line. No
+  capability gap, so it stays out.
+- **Response type inferred from `parse` via a conditional type** (`ofetch`'s
+  `MappedResponseType<R, T>`, which types `ofetch(url, { responseType: 'blob' })` as `Blob` without
+  an explicit generic). Real, but the win — skipping one generic annotation — is small next to the
+  cost: conditional-type inference over an options field produces exactly the confusing compiler
+  errors "predictable over clever" exists to avoid. The explicit `<T>` stays the simpler contract.
+- **Query values silently `JSON.stringify`d when nested** (`ofetch`'s `normalizeQueryValue`, for
+  `typeof value === 'object'`). This is precisely the implicit-serialization magic `Query`'s
+  primitives-only type was built to prevent — confirmation, not a reason to loosen it.
 
 ---
 

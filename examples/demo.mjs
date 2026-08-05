@@ -21,6 +21,12 @@ await section('GET, auto-parsed as JSON', async () => {
   console.log(todo)
 })
 
+await section('a URL instance works as the request target too', async () => {
+  const target = new URL('/todos/2', 'https://jsonplaceholder.typicode.com')
+  const todo = await air.get(target)
+  console.log(todo)
+})
+
 await section('query serialization', async () => {
   const posts = await air.get('https://jsonplaceholder.typicode.com/posts', {
     query: { userId: 1, _limit: 2 },
