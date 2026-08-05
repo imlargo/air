@@ -56,6 +56,31 @@ describe('url', () => {
     await air.get('https://other.test/ping', { baseURL: 'https://api.test' })
     expect(requests[0]!.url).toBe('https://other.test/ping')
   })
+
+  it('treats protocol-relative paths as absolute', async () => {
+    const requests = mockFetch()
+    await air.get('//cdn.test/logo.png', { baseURL: 'https://api.test' })
+    expect(requests[0]!.url).toBe('https://cdn.test/logo.png')
+  })
+
+  it('joins a bare path to a bare baseURL', async () => {
+    const requests = mockFetch()
+    await air.get('users', { baseURL: 'https://api.test' })
+    expect(requests[0]!.url).toBe('https://api.test/users')
+  })
+
+  it('collapses slashes from both sides', async () => {
+    const requests = mockFetch()
+    await air.get('///users', { baseURL: 'https://api.test///' })
+    expect(requests[0]!.url).toBe('https://api.test/users')
+  })
+
+  it('lets a request override the client baseURL', async () => {
+    const requests = mockFetch()
+    const api = air.create({ baseURL: 'https://api.test' })
+    await api.get('/ping', { baseURL: 'https://other.test' })
+    expect(requests[0]!.url).toBe('https://other.test/ping')
+  })
 })
 
 describe('query', () => {
@@ -81,6 +106,37 @@ describe('query', () => {
     const requests = mockFetch()
     await air.get('https://api.test/s', { query: { q: 'a&b=c' } })
     expect(new URL(requests[0]!.url).searchParams.get('q')).toBe('a&b=c')
+  })
+
+  it('keeps falsy values that are not null or undefined', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', { query: { active: false, count: 0, q: '' } })
+    expect(requests[0]!.url).toBe('https://api.test/s?active=false&count=0&q=')
+  })
+
+  it('drops empty arrays', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', { query: { tags: [], page: 1 } })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=1')
+  })
+
+  it('appends to an existing key instead of replacing it', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s?tags=a', { query: { tags: 'b' } })
+    expect(requests[0]!.url).toBe('https://api.test/s?tags=a&tags=b')
+  })
+
+  it('keeps the hash at the end', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s#results', { query: { page: 2 } })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=2#results')
+  })
+
+  it('lets a request override a client default with the same key', async () => {
+    const requests = mockFetch()
+    const api = air.create({ query: { page: 1, key: 'abc' } })
+    await api.get('https://api.test/s', { query: { page: 9 } })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=9&key=abc')
   })
 
   it('rejects values it cannot serialize meaningfully', async () => {
@@ -154,6 +210,22 @@ describe('body', () => {
     await air.post('https://api.test/raw', { body: new Uint8Array([1, 2, 3]) })
     expect(requests[0]!.headers.get('content-type')).toBeNull()
     await expect(requests[0]!.arrayBuffer()).resolves.toHaveProperty('byteLength', 3)
+  })
+
+  it('sends no body for null or undefined', async () => {
+    const requests = mockFetch()
+    await air.post('https://api.test/a', { body: null })
+    await air.post('https://api.test/a', { body: undefined })
+    expect(requests[0]!.body).toBeNull()
+    expect(requests[1]!.body).toBeNull()
+    expect(requests[0]!.headers.get('content-type')).toBeNull()
+  })
+
+  it('uppercases the method', async () => {
+    const requests = mockFetch()
+    await air('https://api.test/a', { method: 'post', body: { a: 1 } })
+    expect(requests[0]!.method).toBe('POST')
+    await expect(requests[0]!.text()).resolves.toBe('{"a":1}')
   })
 
   it('never sends a body on GET or HEAD', async () => {
