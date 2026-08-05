@@ -40,7 +40,9 @@ describe('retry', () => {
     const requests = mockFetch(stall)
     const controller = new AbortController()
 
-    const pending = retry(() => air.get('https://api.test/a', { signal: controller.signal }))
+    const pending = retry(() =>
+      air.get('https://api.test/a', { signal: controller.signal }),
+    )
     controller.abort()
 
     await expect(pending).rejects.toBeInstanceOf(AirError)
