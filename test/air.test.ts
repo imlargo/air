@@ -283,6 +283,37 @@ describe('parsing', () => {
     await expect(air.get('https://api.test/a')).resolves.toBeNull()
   })
 
+  it('parses as a Blob on request', async () => {
+    mockFetch(() => json({ id: 1 }))
+    const blob = await air.get<Blob>('https://api.test/a', { parse: 'blob' })
+    expect(blob).toBeInstanceOf(Blob)
+    await expect(blob.text()).resolves.toBe('{"id":1}')
+  })
+
+  it('parses as an ArrayBuffer on request', async () => {
+    mockFetch(() => new Response(new Uint8Array([1, 2, 3])))
+    const buffer = await air.get<ArrayBuffer>('https://api.test/a', {
+      parse: 'arrayBuffer',
+    })
+    expect(buffer).toBeInstanceOf(ArrayBuffer)
+    expect(buffer.byteLength).toBe(3)
+  })
+
+  it('resolves an empty body to null for blob and arrayBuffer too', async () => {
+    mockFetch(() => new Response(null, { status: 200 }))
+    await expect(air.get('https://api.test/a', { parse: 'blob' })).resolves.toBeNull()
+    await expect(
+      air.get('https://api.test/a', { parse: 'arrayBuffer' }),
+    ).resolves.toBeNull()
+  })
+
+  it('hands back the Response even on 204', async () => {
+    mockFetch(() => new Response(null, { status: 204 }))
+    const response = await air.get<Response>('https://api.test/a', { parse: 'response' })
+    expect(response).toBeInstanceOf(Response)
+    expect(response.status).toBe(204)
+  })
+
   it('hands back the raw Response when asked', async () => {
     mockFetch(() => json({ id: 1 }, { headers: { 'x-total': '42' } }))
 
@@ -314,6 +345,32 @@ describe('errors', () => {
     expect(failure.data).toEqual({ message: 'nope' })
     expect(failure.response).toBeInstanceOf(Response)
     expect(failure.request.url).toBe('https://api.test/users/1')
+  })
+
+  it('still throws when the error body cannot be parsed', async () => {
+    mockFetch(
+      () =>
+        new Response('<html>oops</html>', {
+          status: 500,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+
+    const error = await air.get('https://api.test/a').catch((e: unknown) => e)
+
+    expect(isAirError(error)).toBe(true)
+    expect((error as AirError).status).toBe(500)
+    expect((error as AirError).data).toBeUndefined()
+  })
+
+  it('reports the final url, query string included', async () => {
+    mockFetch(() => json({}, { status: 400 }))
+    const api = air.create({ baseURL: 'https://api.test' })
+
+    const error = await api.get('/s', { query: { page: 2 } }).catch((e: unknown) => e)
+
+    expect((error as AirError).request.url).toBe('https://api.test/s?page=2')
+    expect((error as AirError).message).toContain('https://api.test/s?page=2')
   })
 
   it('surfaces network failures as AirError', async () => {
@@ -416,6 +473,40 @@ describe('clients', () => {
     expect(requests[0]!.url).toBe('https://api.test/me')
     expect(requests[0]!.headers.get('x-client')).toBe('air')
     expect(requests[0]!.headers.get('x-scope')).toBe('admin')
+  })
+
+  it('merges every HeadersInit shape', async () => {
+    const requests = mockFetch()
+    const api = air.create({ headers: new Headers({ 'X-Client': 'air' }) })
+
+    await api.get('https://api.test/a', { headers: [['X-Scope', 'admin']] })
+
+    expect(requests[0]!.headers.get('x-client')).toBe('air')
+    expect(requests[0]!.headers.get('x-scope')).toBe('admin')
+  })
+
+  it('creates an empty client', async () => {
+    const requests = mockFetch()
+    const api = air.create()
+    await api.get('https://api.test/a')
+    expect(requests[0]!.url).toBe('https://api.test/a')
+  })
+
+  it('leaves the parent client untouched when deriving', async () => {
+    const requests = mockFetch()
+    const api = air.create({ baseURL: 'https://api.test', headers: { 'X-Client': 'air' } })
+    api.create({ baseURL: 'https://other.test', headers: { 'X-Client': 'derived' } })
+
+    await api.get('/a')
+
+    expect(requests[0]!.url).toBe('https://api.test/a')
+    expect(requests[0]!.headers.get('x-client')).toBe('air')
+  })
+
+  it('carries client defaults into a parse override', async () => {
+    mockFetch(() => json({ id: 1 }))
+    const api = air.create({ parse: 'text' })
+    await expect(api.get('https://api.test/a')).resolves.toBe('{"id":1}')
   })
 
   it('forwards unknown options to fetch', async () => {
