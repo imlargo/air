@@ -187,4 +187,8 @@ pnpm build      # tsdown → dist/ (ESM + .d.ts)
 pnpm test       # vitest run
 pnpm lint       # eslint . --max-warnings 0
 pnpm format     # prettier --write .
+pnpm demo       # build, then run examples/demo.mjs against real endpoints
 ```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the design philosophy and the behavior rules
+behind these choices.
