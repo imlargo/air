@@ -24,8 +24,8 @@ export class AirError<T = unknown> extends Error {
     this.statusText = init.response?.statusText
     this.data = init.data
 
-    // Branded rather than detected with instanceof: an app can end up holding both
-    // the ESM and the CJS copy of air, each with its own AirError class.
+    // Branded rather than detected with instanceof: an app can end up holding two copies
+    // of air, each with its own AirError class, and instanceof fails across them.
     Object.defineProperty(this, BRAND, { value: true })
   }
 }
