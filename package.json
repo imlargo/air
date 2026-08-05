@@ -19,6 +19,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "test": "vitest run",
+    "demo": "pnpm build && node examples/demo.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write ."
