@@ -3,6 +3,7 @@
 A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 
 - Zero runtime dependencies
+- ESM only
 - Auto-parsing, auto body detection
 - Non-2xx responses throw
 - No timeout or retry machinery — `AbortSignal` and a `for` loop already do that
@@ -170,7 +171,7 @@ try {
 ```
 
 `isAirError` matches on a `Symbol.for('air.error')` brand rather than `instanceof`, so it
-still works when an app ends up with both the ESM and the CJS copy of the package loaded.
+still works when an app ends up with two copies of the package loaded.
 
 ### Types
 
@@ -179,18 +180,10 @@ air.get<User[]>('/users') // Promise<User[]>
 air.get('/users') // Promise<unknown> — never `any`
 ```
 
-## CommonJS
-
-The source is ESM-first; CJS is emitted for compatibility.
-
-```js
-const { air } = require('air')
-```
-
 ## Development
 
 ```bash
-pnpm build      # tsdown → dist/ (ESM + CJS + .d.ts)
+pnpm build      # tsdown → dist/ (ESM + .d.ts)
 pnpm test       # vitest run
 pnpm lint       # eslint . --max-warnings 0
 pnpm format     # prettier --write .
