@@ -57,10 +57,10 @@ describe('url', () => {
     expect(requests[0]!.url).toBe('https://other.test/ping')
   })
 
-  it('treats protocol-relative paths as absolute', async () => {
+  it('treats a leading double slash as a path, not as a host', async () => {
     const requests = mockFetch()
-    await air.get('//cdn.test/logo.png', { baseURL: 'https://api.test' })
-    expect(requests[0]!.url).toBe('https://cdn.test/logo.png')
+    await air.get('//assets/logo.png', { baseURL: 'https://api.test' })
+    expect(requests[0]!.url).toBe('https://api.test/assets/logo.png')
   })
 
   it('joins a bare path to a bare baseURL', async () => {
@@ -494,7 +494,10 @@ describe('clients', () => {
 
   it('leaves the parent client untouched when deriving', async () => {
     const requests = mockFetch()
-    const api = air.create({ baseURL: 'https://api.test', headers: { 'X-Client': 'air' } })
+    const api = air.create({
+      baseURL: 'https://api.test',
+      headers: { 'X-Client': 'air' },
+    })
     api.create({ baseURL: 'https://other.test', headers: { 'X-Client': 'derived' } })
 
     await api.get('/a')
