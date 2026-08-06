@@ -1,10 +1,28 @@
 {
-  "name": "air",
+  "name": "@korastd/air",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A tiny, modern HTTP client for TypeScript. Built on native fetch.",
   "license": "MIT",
   "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imlargo/air.git"
+  },
+  "homepage": "https://github.com/imlargo/air#readme",
+  "bugs": {
+    "url": "https://github.com/imlargo/air/issues"
+  },
+  "keywords": [
+    "fetch",
+    "http",
+    "http-client",
+    "esm",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./dist/index.mjs",
     "./package.json": "./package.json"
@@ -22,7 +40,8 @@
     "demo": "pnpm build && node examples/demo.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "prepublishOnly": "pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
