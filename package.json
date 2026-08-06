@@ -23,6 +23,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "packageManager": "pnpm@10.29.2",
   "exports": {
     ".": "./dist/index.mjs",
     "./package.json": "./package.json"
@@ -37,6 +38,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "test": "vitest run",
+    "smoke": "pnpm build && node scripts/smoke.mjs",
     "demo": "pnpm build && node examples/demo.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
