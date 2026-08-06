@@ -252,6 +252,61 @@ describe('body', () => {
     await expect(requests[0]!.arrayBuffer()).resolves.toHaveProperty('byteLength', 3)
   })
 
+  it('marks a streaming body half-duplex, which fetch requires', async () => {
+    let seen: RequestInit | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen = init
+        return json({})
+      }),
+    )
+    const stream = new ReadableStream({
+      start: (c) => {
+        c.close()
+      },
+    })
+
+    await air.post('https://api.test/upload', { body: stream })
+
+    expect(seen).toHaveProperty('duplex', 'half')
+  })
+
+  it('lets the caller override duplex', async () => {
+    let seen: RequestInit | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen = init
+        return json({})
+      }),
+    )
+    const stream = new ReadableStream({
+      start: (c) => {
+        c.close()
+      },
+    })
+
+    await air.post('https://api.test/upload', { body: stream, duplex: 'half' })
+
+    expect(seen).toHaveProperty('duplex', 'half')
+  })
+
+  it('does not set duplex for ordinary bodies', async () => {
+    let seen: RequestInit | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen = init
+        return json({})
+      }),
+    )
+
+    await air.post('https://api.test/a', { body: { a: 1 } })
+
+    expect(seen).not.toHaveProperty('duplex')
+  })
+
   it('sends no body for null or undefined', async () => {
     const requests = mockFetch()
     await air.post('https://api.test/a', { body: null })

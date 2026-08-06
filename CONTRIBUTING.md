@@ -200,7 +200,12 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
   value the caller could write is ever correct; a caller-supplied `Content-Type` is deleted rather
   than kept, which is the one header this library overrides instead of deferring to. This is the
   most common bug in wrappers like this one — get it right.
-- **`URLSearchParams`, `Blob`, `File`, `ArrayBuffer`, typed arrays, `ReadableStream`, `string`** → pass through untouched, no `Content-Type` added.
+- **`URLSearchParams`, `Blob`, `File`, `ArrayBuffer`, typed arrays, `string`** → pass through untouched, no `Content-Type` added.
+- **`ReadableStream`** → passes through untouched, but also sets `duplex: 'half'`, which `fetch`
+  refuses to send a stream without (`RequestInit: duplex option is required when sending a body`).
+  A caller-supplied `duplex` wins. This was a genuine bug: streaming bodies were documented as
+  supported and threw at runtime, because the test suite mocks `fetch` and a mock does not enforce
+  the requirement — it only showed up against a real server.
 - **`undefined` and `null`** → no body sent. `null` matches `fetch`'s own meaning for `body: null`.
 - Never send a body on `GET` or `HEAD`.
 

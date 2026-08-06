@@ -181,6 +181,9 @@ typed arrays, `ReadableStream` and strings are passed through untouched — in p
 `FormData` never gets a `Content-Type`, even one you set yourself, so the runtime can set
 the multipart boundary. `GET` and `HEAD` never send a body.
 
+A `ReadableStream` body additionally gets `duplex: 'half'`, which `fetch` requires in order
+to stream a request at all. Pass your own `duplex` to override it.
+
 ### Response
 
 Parsed from the response `Content-Type`: JSON for `application/json` and `+json` suffixes,

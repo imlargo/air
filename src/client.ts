@@ -74,9 +74,11 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
 
   const requestHeaders = new Headers(await resolveHeaders(headers))
   let payload: BodyInit | undefined
+  let duplex: 'half' | undefined
   if (verb !== 'GET' && verb !== 'HEAD') {
     const prepared = prepareBody(body)
     payload = prepared.body
+    duplex = prepared.duplex
     if (prepared.stripContentType) {
       requestHeaders.delete('content-type')
     } else if (prepared.contentType && !requestHeaders.has('content-type')) {
@@ -87,6 +89,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
   let response: Response
   try {
     response = await fetch(url, {
+      ...(duplex ? { duplex } : {}),
       ...init,
       method: verb,
       headers: requestHeaders,

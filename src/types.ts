@@ -15,6 +15,10 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers'> {
   body?: unknown
   headers?: HeaderSource
   parse?: ParseMode
+  // Declared here because the DOM lib's RequestInit still omits it, so callers
+  // could not pass it even though fetch requires it for a streaming body. air
+  // sets it automatically for a ReadableStream; this is the manual override.
+  duplex?: 'half'
 }
 
 export interface AirRequest {

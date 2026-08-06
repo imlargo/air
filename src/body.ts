@@ -5,6 +5,9 @@ export interface PreparedBody {
   // caller could write by hand is ever valid — a caller-supplied one is removed
   // rather than kept, unlike every other header.
   stripContentType?: boolean
+  // Streaming a body is a half-duplex exchange, and fetch refuses to send one
+  // without being told so: "duplex option is required when sending a body".
+  duplex?: 'half'
 }
 
 export function prepareBody(body: unknown): PreparedBody {
@@ -12,12 +15,13 @@ export function prepareBody(body: unknown): PreparedBody {
 
   if (body instanceof FormData) return { body, stripContentType: true }
 
+  if (body instanceof ReadableStream) return { body, duplex: 'half' }
+
   if (
     typeof body === 'string' ||
     body instanceof URLSearchParams ||
     body instanceof Blob ||
     body instanceof ArrayBuffer ||
-    body instanceof ReadableStream ||
     ArrayBuffer.isView(body)
   ) {
     return { body: body as BodyInit }
