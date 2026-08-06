@@ -1,5 +1,8 @@
 # air
 
+[![CI](https://github.com/imlargo/air/actions/workflows/ci.yml/badge.svg)](https://github.com/imlargo/air/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@korastd/air)](https://www.npmjs.com/package/@korastd/air)
+
 A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 
 - Zero runtime dependencies
