@@ -269,11 +269,12 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   before logging is the consuming app's job, not the library's.
 - **Error messages include the full URL**, query string and all. Same reasoning as every other HTTP
   client; those values are already in server access logs.
-- **Packaging metadata** (`LICENSE`, real version, `repository`, `prepublishOnly`) is done —
+- **Packaging metadata** (`LICENSE`, real version, `repository`, `prepublishOnly`, CI) is done —
   publishing went from deferred to actually on the table. `prepublishOnly: "pnpm build"` exists
   specifically because `dist/` is gitignored while `files` points at it: without it, publishing
-  from a clean clone (or CI) would ship an empty package. **CI itself is still not set up** — that
-  part of the original deferral stands.
+  from a clean clone (or CI) would ship an empty package. Verified by running
+  `npm publish --dry-run` in a fresh clone with nothing but `pnpm install` — it built and packed
+  the right five files.
 - **Published as `@korastd/air`**, not the unscoped `air` — that name was already taken by an
   unrelated package on npm. The scope is Kora Estudio's; the internal export name (`air`, `create`,
   `AirError`, ...) is unaffected, only the install/import specifier changes
@@ -302,6 +303,10 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   every parse mode, non-2xx throwing, aborting during a slow body read, and URL joining.
 - Type-level rules get type-level tests: `@ts-expect-error` on a `query` value that must not
   compile. `pnpm typecheck` covers `test/`, so loosening a type fails the build.
+- `scripts/smoke.mjs` covers what the vitest suite structurally cannot: it imports the **built**
+  `dist/`, not `src/`, so a broken build — bad bundling, a dropped export — fails there even with a
+  fully green test run. It is plain Node with no test runner and no syntax past Node 18, because CI
+  also runs it on the oldest version `engines` claims. Keep both of those properties if you edit it.
 - `examples/demo.mjs` makes real network requests and is not part of `pnpm test` — run it by hand
   (`pnpm demo`) to sanity-check the library against the real thing, not against mocks.
 
@@ -378,10 +383,39 @@ pnpm test          # vitest run
 pnpm typecheck     # tsc --noEmit
 pnpm lint          # eslint . --max-warnings 0
 pnpm format        # prettier --write .
+pnpm smoke         # build, then run scripts/smoke.mjs against the built dist/
 pnpm demo          # build, then run examples/demo.mjs against real endpoints
 ```
 
 `pnpm format` runs prettier over the whole repo, this file included.
+
+---
+
+## CI and releasing
+
+Two workflows in `.github/workflows/`:
+
+**`ci.yml`** runs on every push to `main` and every PR. Two jobs:
+
+- `check` — lint, typecheck, tests and build on Node 24. The correctness gate.
+- `compat` — builds on Node 24, then runs `scripts/smoke.mjs` against the built `dist/` on Node
+  18, 20, 22 and 24. This exists because the two Node versions in play are not the same one: the
+  build toolchain needs ≥22.18 (tsdown) while the package claims `engines: node >=18` for
+  consumers. Without this job that claim would be an assertion nobody checks. It deliberately uses
+  plain `node` rather than vitest, since vitest itself needs ≥20 and could not run on the oldest
+  version being verified.
+
+**`release.yml`** runs on a pushed `v*` tag and publishes to npm. It re-runs lint, typecheck and
+tests, refuses to publish if the tag disagrees with `package.json`'s version, and publishes with
+`--provenance` so npm records which commit and workflow produced the tarball. Publishing needs an
+`NPM_TOKEN` repository secret with publish rights on the `@korastd` scope; provenance additionally
+needs the `id-token: write` permission the workflow already declares.
+
+To cut a release: bump `version` in `package.json`, commit, then
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+```
 
 ---
 
