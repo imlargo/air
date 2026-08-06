@@ -171,6 +171,15 @@ describe('query', () => {
     await api.get('/s', { query: { page: 1 } })
     expect(requests[0]!.url).toBe('https://api.test/s?key=abc&page=1')
   })
+
+  it('leaves an existing search string byte-for-byte alone when no query is involved', async () => {
+    const requests = mockFetch()
+    // Re-parsing and re-serializing through URLSearchParams would turn %20 into +,
+    // even with nothing to actually merge — this must not happen just because
+    // `options` was passed for an unrelated reason (headers, here).
+    await air.get('https://api.test/s?msg=hola%20mundo', { headers: { 'X-Test': '1' } })
+    expect(requests[0]!.url).toBe('https://api.test/s?msg=hola%20mundo')
+  })
 })
 
 describe('body', () => {

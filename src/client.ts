@@ -16,20 +16,9 @@ declare global {
   }
 }
 
-// Throws with request()'s own frame trimmed from the stack, so it starts at the
-// caller's call site instead of inside air.
-function fail(
-  message: string,
-  info: AirRequest,
-  init?: ConstructorParameters<typeof AirError>[2],
-): never {
-  const error = new AirError(message, info, init)
-  Error.captureStackTrace?.(error, request)
-  throw error
+async function resolveHeaders(source?: HeaderSource): Promise<HeadersInit | undefined> {
+  return typeof source === 'function' ? source() : source
 }
-
-const resolveHeaders = async (source?: HeaderSource): Promise<HeadersInit | undefined> =>
-  typeof source === 'function' ? source() : source
 
 // Stays a function even when both sides are static, so a header source is never
 // resolved until the request that actually needs it — including through a chain
@@ -50,15 +39,30 @@ function merge(base: AirOptions, extra?: AirOptions): AirOptions {
     ...base,
     ...extra,
     headers: mergeHeaders(base.headers, extra.headers),
+    // undefined (not {}) when neither side has one: buildURL treats a query of {}
+    // as "process the URL's search string," which re-encodes it (%20 -> +) even
+    // when no merge was actually requested.
     query: base.query || extra.query ? { ...base.query, ...extra.query } : undefined,
   }
 }
 
-function describe(error: unknown, fallback: string): string {
+function reasonFor(error: unknown, fallback: string): string {
   const name = error instanceof Error ? error.name : ''
   if (name === 'TimeoutError') return 'timed out'
   if (name === 'AbortError') return 'was aborted'
   return fallback
+}
+
+// Throws with request()'s own frame trimmed from the stack, so it starts at the
+// caller's call site instead of inside air.
+function fail(
+  message: string,
+  info: AirRequest,
+  init?: ConstructorParameters<typeof AirError>[2],
+): never {
+  const error = new AirError(message, info, init)
+  Error.captureStackTrace?.(error, request)
+  throw error
 }
 
 async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
@@ -89,7 +93,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
       body: payload,
     })
   } catch (error) {
-    const reason = describe(
+    const reason = reasonFor(
       error,
       `failed: ${error instanceof Error ? error.message : String(error)}`,
     )
@@ -107,7 +111,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
   try {
     return (await parseResponse(response, parse)) as T
   } catch (error) {
-    const reason = describe(error, 'returned an unreadable body')
+    const reason = reasonFor(error, 'returned an unreadable body')
     fail(`${verb} ${url} ${reason}`, info, { response, cause: error })
   }
 }

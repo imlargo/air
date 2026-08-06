@@ -173,6 +173,12 @@ These are the details that make the library feel good. Get them exactly right.
 - Note for callers: TypeScript gives object type aliases an implicit index signature but never gives
   interfaces one, so `query` accepts a `type` and rejects an `interface`. Documented in the README;
   not worth making `AirOptions` generic to work around.
+- `merge()` in `client.ts` produces `query: undefined` when neither side has one — never an
+  unconditional `{ ...base.query, ...extra.query }`. Passing an empty object through to `buildURL`
+  is not equivalent to passing nothing: `buildURL` treats any truthy `query` as "re-parse and
+  rebuild the search string," which round-trips it through `URLSearchParams` and turns
+  `?msg=hola%20mundo` into `?msg=hola+mundo` — a visible change nobody asked for, triggered just by
+  `options` being present for an unrelated reason (headers, say). There is a test pinning this.
 
 ### Headers
 
