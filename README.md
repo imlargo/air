@@ -97,7 +97,7 @@ for it, and it has something a generic helper cannot have: your `AbortSignal` in
 it can tell a transient failure apart from a request you cancelled on purpose.
 
 ```ts
-import air, { isAirError } from 'air'
+import air, { isAirError } from '@korastd/air'
 
 const transient = (error: unknown) =>
   isAirError(error) && (error.status === undefined || error.status >= 500)
