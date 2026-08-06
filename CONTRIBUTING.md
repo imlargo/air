@@ -406,10 +406,18 @@ Two workflows in `.github/workflows/`:
   version being verified.
 
 **`release.yml`** runs on a pushed `v*` tag and publishes to npm. It re-runs lint, typecheck and
-tests, refuses to publish if the tag disagrees with `package.json`'s version, and publishes with
-`--provenance` so npm records which commit and workflow produced the tarball. Publishing needs an
-`NPM_TOKEN` repository secret with publish rights on the `@korastd` scope; provenance additionally
-needs the `id-token: write` permission the workflow already declares.
+tests, and refuses to publish if the tag disagrees with `package.json`'s version.
+
+There is **no `NPM_TOKEN` secret**, deliberately. npm now requires 2FA to publish and has removed
+the 2FA-bypass token that automation used to rely on, so a token in CI — where nobody can type a
+one-time code — simply gets a `403`. Instead the workflow authenticates by **trusted publishing**:
+npm checks the OIDC identity GitHub Actions presents against a trusted publisher configured on the
+package, so no long-lived credential exists anywhere. That is what `id-token: write` is for, and
+why provenance comes for free.
+
+The trusted publisher is configured on npmjs.com under the package's _Settings → Trusted Publisher_
+and must name this repository **and this workflow's filename**. Renaming `release.yml`, or
+publishing from a different workflow, breaks it until the setting is updated to match.
 
 To cut a release: bump `version` in `package.json`, commit, then
 
