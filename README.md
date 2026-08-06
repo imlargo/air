@@ -10,13 +10,13 @@ A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 - Works in Node 18+, browsers, Deno, Bun and edge runtimes
 
 ```bash
-pnpm add air
+pnpm add @korastd/air
 ```
 
 ## Usage
 
 ```ts
-import air from 'air'
+import air from '@korastd/air'
 
 // Callable directly
 const data = await air<User>('https://api.example.com/users/1')
