@@ -40,7 +40,7 @@ Do not build these. If a task drifts toward one of them, stop and flag it:
 The default export is callable and also carries method shortcuts:
 
 ```ts
-import air from 'air'
+import air from '@korastd/air'
 
 // Callable directly
 const data = await air<User>('https://api.example.com/users/1')
@@ -269,9 +269,15 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   before logging is the consuming app's job, not the library's.
 - **Error messages include the full URL**, query string and all. Same reasoning as every other HTTP
   client; those values are already in server access logs.
-- **Packaging metadata** (`LICENSE` file, real version, `repository`, `prepublishOnly`, CI) is
-  deliberately deferred until publishing is actually on the table. Note that `dist/` is gitignored
-  while `files` points at it, so publishing without building first would ship an empty package.
+- **Packaging metadata** (`LICENSE`, real version, `repository`, `prepublishOnly`) is done —
+  publishing went from deferred to actually on the table. `prepublishOnly: "pnpm build"` exists
+  specifically because `dist/` is gitignored while `files` points at it: without it, publishing
+  from a clean clone (or CI) would ship an empty package. **CI itself is still not set up** — that
+  part of the original deferral stands.
+- **Published as `@korastd/air`**, not the unscoped `air` — that name was already taken by an
+  unrelated package on npm. The scope is Kora Estudio's; the internal export name (`air`, `create`,
+  `AirError`, ...) is unaffected, only the install/import specifier changes
+  (`import air from '@korastd/air'`).
 
 ---
 
