@@ -151,6 +151,20 @@ const api = air.create({
 })
 ```
 
+The function runs once per request and `air` does not deduplicate it, so an async one that
+actually hits the network will do so on every call — five concurrent requests mean five
+refreshes. Deduplicating is your job, and it is the usual single-flight promise:
+
+```ts
+let inFlight: Promise<string> | null = null
+
+const token = () => (inFlight ??= refresh().finally(() => (inFlight = null)))
+
+const api = air.create({
+  headers: async () => ({ Authorization: `Bearer ${await token()}` }),
+})
+```
+
 A header function on a client and a plain object (or another function) on a request, or on a
 client derived with `create()`, combine the same way static headers do — nothing is resolved,
 or frozen, until the request that actually needs it.
@@ -211,7 +225,7 @@ try {
     error.status // 404
     error.statusText // 'Not Found'
     error.data // parsed error body, if any
-    error.request // { url, options }
+    error.request // { url, method, headers, options } — headers as actually sent
     error.response // the raw Response, for escape hatches
     error.cause // the underlying failure, for network errors and aborts
   }

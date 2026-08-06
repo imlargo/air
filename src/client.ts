@@ -70,7 +70,6 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
 
   const url = buildURL(typeof path === 'string' ? path : path.href, baseURL, query)
   const verb = method.toUpperCase()
-  const info = { url, options }
 
   const requestHeaders = new Headers(await resolveHeaders(headers))
   let payload: BodyInit | undefined
@@ -85,6 +84,11 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
       requestHeaders.set('content-type', prepared.contentType)
     }
   }
+
+  // Built after the headers are resolved and the body has had its say, so an
+  // error reports what was actually sent. options.headers may be a function,
+  // which is useless when you are looking at a 401 and want to see the token.
+  const info = { url, method: verb, headers: requestHeaders, options }
 
   let response: Response
   try {

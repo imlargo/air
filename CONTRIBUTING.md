@@ -185,6 +185,9 @@ These are the details that make the library feel good. Get them exactly right.
 - `headers` merges with the client's defaults, request wins on a shared key, for every
   `HeadersInit` shape — a plain object, a `Headers` instance, or an array of tuples.
 - `headers` may also be a function (sync or async) returning one of the above; see Lazy headers.
+- A header function is called once per request and is **not** deduplicated. That is correct — the
+  point is a fresh value per request — but an async one that hits the network will do so on every
+  call. Single-flighting it is the caller's job, and the README shows the pattern.
 - Merging two header sources — client defaults and a request, or a client and a client it was
   derived from — never resolves either side. `mergeHeaders` always returns a new closure; only
   `request()` calls it, right before building the `Headers` object that goes to `fetch`. A chain
@@ -231,7 +234,10 @@ Throw an `AirError` that extends `Error` and carries:
 - `status`, `statusText`
 - `data` — the parsed error body, when there is one. An error body that fails to parse leaves `data`
   undefined; it never turns a 500 into a parse error.
-- `request` — the final URL (query string included) and the options used
+- `request` — the final URL (query string included), the method, the options used, and `headers`:
+  the `Headers` as actually sent, resolved and including anything the body contributed. That field
+  exists because `options.headers` may be an unevaluated function, which is useless when you are
+  holding a 401 and want to know which token went out.
 - `response` — the raw `Response`, for escape hatches
 - `cause` — the underlying failure for network errors, timeouts and aborts
 

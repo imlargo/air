@@ -442,6 +442,23 @@ describe('errors', () => {
     expect(failure.request.url).toBe('https://api.test/users/1')
   })
 
+  it('reports the headers as actually sent, not the source that produced them', async () => {
+    mockFetch(() => json({}, { status: 401 }))
+    const api = air.create({ headers: () => ({ Authorization: 'Bearer resolved' }) })
+
+    const error = await api
+      .post('https://api.test/a', { body: { a: 1 } })
+      .catch((e: unknown) => e)
+
+    const { request } = error as AirError
+    // options.headers is still the lazy function; request.headers is the answer.
+    expect(typeof request.options.headers).toBe('function')
+    expect(request.headers.get('authorization')).toBe('Bearer resolved')
+    // and it includes what the body contributed
+    expect(request.headers.get('content-type')).toBe('application/json')
+    expect(request.method).toBe('POST')
+  })
+
   it('trims its own internal frame from the stack trace', async () => {
     mockFetch(() => json({}, { status: 500 }))
     const error = await air.get('https://api.test/a').catch((e: unknown) => e)

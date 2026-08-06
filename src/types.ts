@@ -23,6 +23,10 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers'> {
 
 export interface AirRequest {
   url: string
+  method: string
+  // The headers as actually sent, already resolved and with any Content-Type the
+  // body added. `options.headers` may still be an unevaluated function.
+  headers: Headers
   options: AirOptions
 }
 
