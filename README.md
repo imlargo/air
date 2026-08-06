@@ -196,7 +196,7 @@ response.headers.get('link')
 Non-2xx responses, network failures, timeouts and aborts all throw an `AirError`.
 
 ```ts
-import { isAirError } from 'air'
+import { isAirError } from '@korastd/air'
 
 try {
   await api.get('/users/1')
