@@ -9,12 +9,25 @@ export type Query = Record<string, QueryValue | readonly QueryValue[]>
 // one captured when the client was created.
 export type HeaderSource = HeadersInit | (() => HeadersInit | Promise<HeadersInit>)
 
+// Narrower than the global fetch, because air only ever calls it one way: a URL
+// string and a full init. Narrow on the parameters means wide on what qualifies,
+// so the global itself, a framework's per-request wrapper, and a test double all
+// satisfy it.
+export type Fetch = (input: string, init: RequestInit) => Promise<Response>
+
 export interface AirOptions extends Omit<RequestInit, 'body' | 'headers'> {
   baseURL?: string
   query?: Query
   body?: unknown
   headers?: HeaderSource
   parse?: ParseMode
+  // The global fetch unless given one. A server framework hands out a wrapper
+  // that only exists for the duration of one incoming request — SvelteKit's
+  // `event.fetch` forwards that request's cookies, resolves relative URLs
+  // against it, and answers a same-app route by calling its handler instead of
+  // going back out over HTTP — so it has to arrive as an option; there is
+  // nothing ambient for air to reach for.
+  fetch?: Fetch
   // Declared here because the DOM lib's RequestInit still omits it, so callers
   // could not pass it even though fetch requires it for a streaming body. air
   // sets it automatically for a ReadableStream; this is the manual override.

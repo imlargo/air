@@ -7,6 +7,7 @@ export type {
   AirOptions,
   AirRequest,
   AirURL,
+  Fetch,
   HeaderSource,
   Query,
   QueryValue,

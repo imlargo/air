@@ -13,7 +13,7 @@ library, see [README.md](./README.md).
 Concretely:
 
 - **Zero runtime dependencies.** Never add one. If something needs a dependency, it doesn't belong in `air`.
-- **Native `fetch` only.** No XHR, no polyfills, no `node-fetch` fallback. Node 18+, browsers, Deno, Bun, edge runtimes.
+- **Native `fetch` only.** No XHR, no polyfills, no `node-fetch` fallback. Node 18+, browsers, Deno, Bun, edge runtimes. The `fetch` option accepts another fetch-_shaped_ function — a framework's per-request wrapper — which is not the same as supporting a second transport.
 - **Predictable over clever.** A reader should be able to guess what a function does from its signature.
 - **Small surface area.** Fewer options, better defaults. Every new option is a permanent maintenance cost and a permanent thing users have to learn.
 - **Types are the docs.** Full generics, no `any` in public types. `unknown` is the fallback, never `any`.
@@ -66,8 +66,8 @@ const results = await api.get<Page<User>>('/users', {
 Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `HeaderSource`, `Query`, `QueryValue`,
-`ParseMode`. Nothing else.
+types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `Fetch`, `HeaderSource`, `Query`,
+`QueryValue`, `ParseMode`. Nothing else.
 
 The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
 instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
@@ -91,8 +91,36 @@ Keep this list short. Adding to it requires justification.
 | `headers` | `HeaderSource`                                              | Merged with client defaults, request wins; may be a function |
 | `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched — never wrapped or bridged    |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                             |
+| `fetch`   | `Fetch`                                                     | The global `fetch` unless given one; merges like the rest    |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
+
+### Injected fetch
+
+The one option here that isn't a request detail — it replaces the transport. It earns its place
+because on the server the global `fetch` is the _wrong_ function, and no amount of configuring the
+other options fixes that. SvelteKit's `event.fetch` (Remix, Astro, Nuxt all have an equivalent)
+forwards the incoming request's cookies and headers, resolves a relative URL against the current
+page, and short-circuits a request to your own app into a direct handler call instead of a real
+HTTP round-trip back to the same process. It exists only inside a request, so nothing ambient can
+be reached for — it has to be passed in, and a shared service module can only receive it if the
+client accepts one.
+
+Rules:
+
+- The default resolves **inside `request()`**, not at module load: `fetch: send = fetch` in the
+  destructure. A polyfill installed after import still wins, and the test suite's `vi.stubGlobal`
+  keeps working.
+- Destructured out of the options like every other named one, so it never reaches the `RequestInit`
+  handed to the transport.
+- `Fetch` is `(input: string, init: RequestInit) => Promise<Response>` — narrower than the global on
+  the parameters, which is what makes it wide on implementations. `typeof fetch` (how every
+  framework types its wrapper) is assignable to it; a test double that only handles a string URL is
+  too. Do not widen `input` to `RequestInfo | URL` to "match fetch": air only ever calls it one way,
+  and the wider type rejects the narrower doubles for a flexibility nobody can use.
+- Not a hook, not an interceptor. It is one function in, called once, with no chain around it — see
+  the interceptor non-goal. Wrapping it to log or retry is the caller's own closure, which is why
+  the type stays this plain.
 
 ### No timeouts, no retries
 

@@ -66,7 +66,19 @@ function fail(
 }
 
 async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
-  const { baseURL, query, parse, body, headers, method = 'GET', ...init } = options
+  // `send` defaults inside the call, not at module load, so it picks up whatever
+  // fetch the environment has at request time — a polyfill installed later, or a
+  // test stubbing the global.
+  const {
+    baseURL,
+    query,
+    parse,
+    body,
+    headers,
+    method = 'GET',
+    fetch: send = fetch,
+    ...init
+  } = options
 
   const url = buildURL(typeof path === 'string' ? path : path.href, baseURL, query)
   const verb = method.toUpperCase()
@@ -92,7 +104,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await send(url, {
       ...(duplex ? { duplex } : {}),
       ...init,
       method: verb,

@@ -75,6 +75,26 @@ stub(() => json({ ok: true }, { headers: { 'x-total': '7' } }))
 const response = await air.get('https://x.test/a', { parse: 'response' })
 assert.equal(response.headers.get('x-total'), '7', 'exposes response headers')
 
+// An injected fetch replaces the global one, the way a server framework's
+// per-request fetch does
+stub(() => {
+  throw new Error('the global fetch should not have been called')
+})
+let injected
+const scoped = create({
+  fetch: (url, init) => {
+    injected = { url, init }
+    return json({ scoped: true })
+  },
+})
+assert.deepEqual(
+  await scoped.get('/relative/path'),
+  { scoped: true },
+  'uses the injected fetch',
+)
+assert.equal(injected.url, '/relative/path', 'passes a relative url through untouched')
+assert.equal(injected.init.fetch, undefined, 'does not leak the option into the init')
+
 // Non-2xx throws a recognizable AirError
 stub(() => json({ message: 'nope' }, { status: 404, statusText: 'Not Found' }))
 const error = await air.get('https://x.test/missing').catch((e) => e)

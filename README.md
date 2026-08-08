@@ -9,6 +9,7 @@ A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 - ESM only
 - Auto-parsing, auto body detection
 - Non-2xx responses throw
+- Bring your own `fetch` — SvelteKit's `event.fetch` and friends drop straight in
 - No timeout or retry machinery — `AbortSignal` and a `for` loop already do that
 - Works in Node 18+, browsers, Deno, Bun and edge runtimes
 
@@ -62,6 +63,7 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 | `headers` | `HeaderSource`                                              | Merged with client defaults             |
 | `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched          |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection        |
+| `fetch`   | `Fetch`                                                     | Defaults to the global `fetch`          |
 
 Anything else is forwarded to the underlying `fetch` call.
 
@@ -72,6 +74,50 @@ await air.get(new URL('/users/1', 'https://api.example.com'))
 ```
 
 A `URL` is already absolute, so `baseURL` is skipped for it, same as for an absolute string.
+
+### Fetch
+
+`air` calls the global `fetch` unless you hand it another one. The reason to hand it another
+one is server-side rendering: SvelteKit, Remix, Astro and friends give each request its own
+`fetch`, and it is not a detail — it carries the incoming request's cookies and headers,
+resolves relative URLs against the current page, and answers a request to your own app by
+invoking the route handler directly rather than making a real HTTP round-trip back to
+yourself.
+
+```ts
+// src/lib/api.ts
+export const createApi = (fetch: typeof globalThis.fetch) => air.create({ fetch })
+
+// src/routes/+page.server.ts
+export async function load({ fetch }) {
+  const api = createApi(fetch)
+  return { user: await api.get<User>('/api/me') } // relative, cookies attached, no round-trip
+}
+```
+
+It merges like any other option, so a client can carry it while a single request overrides it,
+and it can arrive per request instead:
+
+```ts
+await api.get('/api/me', { fetch })
+```
+
+The type is deliberately loose — anything callable as `(url, init) => Promise<Response>`
+qualifies, including the global itself, a framework's wrapper, an instrumented fetch that
+logs, and a test double:
+
+```ts
+const calls: string[] = []
+const recorded = air.create({
+  fetch: (url, init) => {
+    calls.push(url)
+    return globalThis.fetch(url, init)
+  },
+})
+```
+
+Leave the option off in the browser and on any client-side navigation — the global `fetch` is
+already the right one there.
 
 ### Timeouts
 
