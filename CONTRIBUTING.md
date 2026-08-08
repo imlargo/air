@@ -313,7 +313,8 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   specifically because `dist/` is gitignored while `files` points at it: without it, publishing
   from a clean clone (or CI) would ship an empty package. Verified by running
   `npm publish --dry-run` in a fresh clone with nothing but `pnpm install` — it built and packed
-  the right five files.
+  the right files. `CHANGELOG.md` is listed in `files` explicitly: npm adds `README` and
+  `LICENSE` to a tarball on its own but not the changelog, as `npm pack --dry-run` confirms.
 - **Published as `@korastd/air`**, not the unscoped `air` — that name was already taken by an
   unrelated package on npm. The scope is Kora Estudio's; the internal export name (`air`, `create`,
   `AirError`, ...) is unaffected, only the install/import specifier changes
@@ -458,11 +459,35 @@ The trusted publisher is configured on npmjs.com under the package's _Settings �
 and must name this repository **and this workflow's filename**. Renaming `release.yml`, or
 publishing from a different workflow, breaks it until the setting is updated to match.
 
-To cut a release: bump `version` in `package.json`, commit, then
+To cut a release: move the `Unreleased` entries in `CHANGELOG.md` under a new heading for the
+version, bump `version` in `package.json`, commit, then
 
 ```bash
 git tag v0.1.1 && git push origin v0.1.1
 ```
+
+`release.yml` refuses to publish a tag that `CHANGELOG.md` has no section for, the same way it
+refuses one that disagrees with `package.json`. Both checks exist because the failure they
+prevent is only visible after the fact, when the version is already on npm and cannot be
+republished.
+
+### Changelog
+
+`CHANGELOG.md` is written by hand, in [Keep a Changelog](https://keepachangelog.com/) order —
+newest first, grouped under `Added` / `Changed` / `Fixed` / `Removed`. No `changesets`, no
+`semantic-release`, no commit-message parsing. A generated changelog is a list of commit
+subjects, and this project's commits are written for the person reading the diff; an entry here
+is written for the person upgrading, which is a different audience and often a different fact.
+
+Two rules:
+
+- **Only what is observable from outside.** A refactor, a test, a docs fix — none of them get a
+  line. If a user cannot tell it happened, the git history is the right place for it.
+- **Say why, not just what.** The `duplex` entry in 0.2.0 is useful because it explains that a
+  mocked `fetch` could not have caught the bug. "Fixed streaming bodies" would not have been.
+
+Add entries under `## [Unreleased]` as the work lands, not at release time — reconstructing
+them from `git log` afterwards is how the "why" gets lost.
 
 ---
 

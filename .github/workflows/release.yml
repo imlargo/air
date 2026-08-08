@@ -35,6 +35,16 @@ jobs:
             exit 1
           fi
 
+      # A version published without an entry is one nobody can find out what
+      # changed in — and it cannot be republished once it is on npm.
+      - name: Changelog has an entry for the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if ! grep -qE "^## \[${tag}\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no '## [${tag}]' section" >&2
+            exit 1
+          fi
+
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

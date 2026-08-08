@@ -298,5 +298,6 @@ pnpm format     # prettier --write .
 pnpm demo       # build, then run examples/demo.mjs against real endpoints
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the design philosophy and the behavior rules
-behind these choices.
+See [CHANGELOG.md](./CHANGELOG.md) for what changed in each release, and
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the design philosophy and the behavior rules behind
+these choices.
