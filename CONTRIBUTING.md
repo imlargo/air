@@ -474,12 +474,31 @@ republished.
 ### Changelog
 
 `CHANGELOG.md` is written by hand, in [Keep a Changelog](https://keepachangelog.com/) order —
-newest first, grouped under `Added` / `Changed` / `Fixed` / `Removed`. No `changesets`, no
-`semantic-release`, no commit-message parsing. A generated changelog is a list of commit
-subjects, and this project's commits are written for the person reading the diff; an entry here
-is written for the person upgrading, which is a different audience and often a different fact.
+newest first, grouped under `Added` / `Changed` / `Fixed` / `Removed`.
 
-Two rules:
+Changelog tooling comes in two families, and they fail differently. Keep them apart before
+proposing one:
+
+**Generated from commit messages** — `semantic-release`, `git-cliff`, `conventional-changelog`,
+and `release-please`'s changelog half. Mechanically these would work here: all but three commits
+in the project's history carry a conventional prefix. The output is the problem. Run
+`git log --format='%s' v0.1.0 | grep -E '^(feat|fix)'` and read what 0.1.0's entry would have
+been: thirty lines, of which maybe seven mean anything to someone installing the package, plus
+`feat: add dist to .gitignore` and four separate `fix:` commits for one README path. Seven of
+those lines are the dynamic-headers feature, counted once per commit. Commits track how the work
+was built; a changelog tracks what changed. A parser cannot convert between them.
+
+**Collected from hand-written entries** — `changesets`. It does _not_ read commits: you write a
+markdown file per change, and it handles collecting them, bumping the version and assembling the
+file. That is compatible with everything above, so the reason it isn't here is scale, not
+quality: one maintainer and one to three entries per release, against a devDependency and a file
+per PR to save a two-minute edit.
+
+**Revisit when** releases stop being one person's decision, or an `Unreleased` section starts
+arriving from more than one contributor at a time — that is the point changesets actually solves,
+and the argument above stops holding. Nothing about the current file blocks the switch.
+
+Two rules for entries:
 
 - **Only what is observable from outside.** A refactor, a test, a docs fix — none of them get a
   line. If a user cannot tell it happened, the git history is the right place for it.
