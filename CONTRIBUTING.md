@@ -449,11 +449,37 @@ pnpm test          # vitest run
 pnpm typecheck     # tsc --noEmit
 pnpm lint          # eslint . --max-warnings 0
 pnpm format        # prettier --write .
+pnpm format:check  # prettier --check . — what CI runs, writes nothing
 pnpm smoke         # build, then run scripts/smoke.mjs against the built dist/
 pnpm demo          # build, then run examples/demo.mjs against real endpoints
 ```
 
-`pnpm format` runs prettier over the whole repo, this file included.
+`pnpm format` runs prettier over the whole repo, this file included. `.prettierignore` holds
+the two exceptions: `dist/` is build output, and `pnpm-lock.yaml` is pnpm's to format —
+prettier and pnpm would rewrite it past each other on every install.
+
+### Pre-commit hook
+
+`pnpm install` sets up a husky `pre-commit` hook (via the `prepare` script) that runs
+`lint-staged`: prettier and `eslint --fix` over the staged files only, with the results added
+back to the commit. Formatting is therefore not something you have to remember.
+
+- Config is `.lintstagedrc.json`. TS/JS gets prettier then `eslint --fix --no-warn-ignored`;
+  markdown, JSON and YAML get prettier. `--no-warn-ignored` is there so staging a file eslint
+  ignores is not an error.
+- An eslint error that `--fix` cannot fix aborts the commit and lint-staged restores exactly
+  what you had staged. Formatting alone never blocks a commit — it just happens.
+- The hook is deliberately fast: no typecheck, no test run. `tsc` cannot be scoped to staged
+  files and a slow hook is a hook people bypass. CI is the gate for those.
+- `git commit --no-verify` skips it, `HUSKY=0` disables it for a shell. Both are fine — this
+  is a convenience, not the enforcement.
+- **The enforcement is `pnpm format:check` in `ci.yml`.** A hook only exists on a clone where
+  someone ran `pnpm install`, so it cannot be the only copy of the rule. If you change the
+  prettier config, change nothing else and watch that step fail — that is the one that matters.
+- `prepare` is `husky || true` rather than `husky`: the script also runs for anyone installing
+  this package from a git URL, and without devDependencies the `husky` binary is not there.
+  Husky's own docs recommend this. CI sets `HUSKY: 0` for the same reason — nothing to install
+  on a throwaway checkout.
 
 ---
 
@@ -463,7 +489,7 @@ Two workflows in `.github/workflows/`:
 
 **`ci.yml`** runs on every push to `main` and every PR. Two jobs:
 
-- `check` — lint, typecheck, tests and build on Node 24. The correctness gate.
+- `check` — format check, lint, typecheck, tests and build on Node 24. The correctness gate.
 - `compat` — builds on Node 24, then runs `scripts/smoke.mjs` against the built `dist/` on Node
   18, 20, 22 and 24. This exists because the two Node versions in play are not the same one: the
   build toolchain needs ≥22.18 (tsdown) while the package claims `engines: node >=18` for

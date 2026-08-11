@@ -44,11 +44,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "prepublishOnly": "pnpm build"
+    "format:check": "prettier --check .",
+    "prepublishOnly": "pnpm build",
+    "prepare": "husky || true"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
     "prettier": "^3.9.6",
     "tsdown": "^0.22.5",
     "typescript": "^6.0.3",

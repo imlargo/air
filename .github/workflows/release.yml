@@ -8,6 +8,10 @@ permissions:
   contents: read
   id-token: write # npm trusted publishing (OIDC) and provenance both need this
 
+# No hooks to install on a CI checkout; see the note in ci.yml.
+env:
+  HUSKY: 0
+
 jobs:
   publish:
     name: Publish to npm
