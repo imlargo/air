@@ -2,7 +2,14 @@ import { prepareBody } from './body.js'
 import { AirError } from './error.js'
 import { parseResponse } from './parse.js'
 import { buildURL } from './url.js'
-import type { AirClient, AirOptions, AirRequest, AirURL, HeaderSource } from './types.js'
+import type {
+  AirClient,
+  AirOptions,
+  AirRequest,
+  AirURL,
+  HeaderSource,
+  SignalSource,
+} from './types.js'
 
 // V8-only (Node, Chrome, Edge); guarded at the call site. Declared locally
 // instead of pulling in @types/node, which would leak Node-only ambient globals
@@ -17,6 +24,10 @@ declare global {
 }
 
 async function resolveHeaders(source?: HeaderSource): Promise<HeadersInit | undefined> {
+  return typeof source === 'function' ? source() : source
+}
+
+function resolveSignal(source?: SignalSource | null): AbortSignal | null | undefined {
   return typeof source === 'function' ? source() : source
 }
 
@@ -77,6 +88,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
     headers,
     method = 'GET',
     fetch: send = fetch,
+    signal: signalSource,
     ...init
   } = options
 
@@ -102,6 +114,11 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
   // which is useless when you are looking at a 401 and want to see the token.
   const info = { url, method: verb, headers: requestHeaders, options }
 
+  // Resolved last, immediately before the send. A signal source that mints an
+  // AbortSignal.timeout(ms) should spend that budget on the request, not share it
+  // with an async header function that had to refresh a token first.
+  const signal = resolveSignal(signalSource)
+
   let response: Response
   try {
     response = await send(url, {
@@ -110,6 +127,7 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
       method: verb,
       headers: requestHeaders,
       body: payload,
+      signal,
     })
   } catch (error) {
     const reason = reasonFor(

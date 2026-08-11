@@ -8,6 +8,12 @@ export function mockFetch(handler: Handler = () => json({})) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      // Real fetch rejects an already-fired signal before it sends anything, and a
+      // mock that skips this check cannot see a whole class of bug — a signal shared
+      // by every request of a long-lived client looks fine here and fails in
+      // production the moment it fires. Verified against Node's fetch: a settled
+      // AbortSignal.timeout rejects with its own TimeoutError, no connection made.
+      if (init?.signal?.aborted) throw init.signal.reason
       const request = new Request(new URL(url, 'https://mock.test'), init)
       requests.push(request)
       return handler(request)

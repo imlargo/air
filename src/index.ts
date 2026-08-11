@@ -12,6 +12,7 @@ export type {
   Query,
   QueryValue,
   ParseMode,
+  SignalSource,
 } from './types.js'
 
 export const air = create()

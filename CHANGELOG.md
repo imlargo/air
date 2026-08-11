@@ -10,6 +10,39 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A per-request timeout could not be a client default.** `air` has no `timeout` option and
+  points you at `AbortSignal.timeout(ms)` instead, but writing one into `air.create()` gave
+  you a single signal shared by every request that client would ever make, with its clock
+  started at `create()` time. Five seconds later it fired, and because a fired signal stays
+  fired — and `fetch` rejects an already-aborted signal before sending anything — every
+  request after that failed instantly, without leaving the process:
+
+  ```ts
+  const api = air.create({ signal: AbortSignal.timeout(5000) }) // broken after 5s
+  ```
+
+  `signal` now accepts a **function** as well, called once per request, so each request gets
+  its own:
+
+  ```ts
+  const api = air.create({ signal: () => AbortSignal.timeout(5000) })
+  ```
+
+  Same fix as lazy `headers`, and it changes nothing about how the signal is treated: still
+  forwarded to `fetch` untouched, still no `AbortController` or signal composition inside the
+  client. A request-level `signal` replaces the client's rather than combining with it —
+  compose them with `AbortSignal.any` in your own function if you want both. Returning
+  `undefined` opts a single request out of the client's budget.
+
+  Passing an `AbortSignal` directly is unchanged and still correct per request; only the
+  client-default case was broken.
+
+### Added
+
+- **`SignalSource` type**, exported: `AbortSignal | (() => AbortSignal | null | undefined)`.
+
 ## [0.3.0] — 2026-08-08
 
 ### Added

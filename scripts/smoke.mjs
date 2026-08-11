@@ -95,6 +95,16 @@ assert.deepEqual(
 assert.equal(injected.url, '/relative/path', 'passes a relative url through untouched')
 assert.equal(injected.init.fetch, undefined, 'does not leak the option into the init')
 
+// A signal function is resolved per request, so a client default is a budget per
+// request rather than one shared signal that dies for good the first time it fires
+stub(() => json({}))
+const timed = create({ signal: () => AbortSignal.timeout(1000) })
+await timed.get('https://x.test/a')
+const first = seen.init.signal
+await timed.get('https://x.test/b')
+assert.ok(first instanceof AbortSignal, 'resolves the signal function')
+assert.notEqual(first, seen.init.signal, 'mints a fresh signal per request')
+
 // Non-2xx throws a recognizable AirError
 stub(() => json({ message: 'nope' }, { status: 404, statusText: 'Not Found' }))
 const error = await air.get('https://x.test/missing').catch((e) => e)

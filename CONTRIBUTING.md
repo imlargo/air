@@ -66,8 +66,8 @@ const results = await api.get<Page<User>>('/users', {
 Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `Fetch`, `HeaderSource`, `Query`,
-`QueryValue`, `ParseMode`. Nothing else.
+types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `Fetch`, `HeaderSource`,
+`SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing else.
 
 The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
 instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
@@ -82,16 +82,16 @@ second code path for the root export is how the two drift apart.
 
 Keep this list short. Adding to it requires justification.
 
-| Option    | Type                                                        | Notes                                                        |
-| --------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
-| `baseURL` | `string`                                                    | Joined with the path, no double slashes                      |
-| `method`  | `string`                                                    | Inferred by the shortcuts, uppercased before sending         |
-| `query`   | `Query`                                                     | Primitives and arrays of primitives only                     |
-| `body`    | `unknown`                                                   | Type auto-detected (see below)                               |
-| `headers` | `HeaderSource`                                              | Merged with client defaults, request wins; may be a function |
-| `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched — never wrapped or bridged    |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                             |
-| `fetch`   | `Fetch`                                                     | The global `fetch` unless given one; merges like the rest    |
+| Option    | Type                                                        | Notes                                                                        |
+| --------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `baseURL` | `string`                                                    | Joined with the path, no double slashes                                      |
+| `method`  | `string`                                                    | Inferred by the shortcuts, uppercased before sending                         |
+| `query`   | `Query`                                                     | Primitives and arrays of primitives only                                     |
+| `body`    | `unknown`                                                   | Type auto-detected (see below)                                               |
+| `headers` | `HeaderSource`                                              | Merged with client defaults, request wins; may be a function                 |
+| `signal`  | `SignalSource`                                              | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                                             |
+| `fetch`   | `Fetch`                                                     | The global `fetch` unless given one; merges like the rest                    |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
 
@@ -136,6 +136,22 @@ that drips its response body: the request hung forever despite both a timeout an
 abort. Forwarding `signal` untouched has no such moment, so `signal` goes straight to `fetch` and is
 never wrapped.
 
+That decision left a hole, though, and it took a user-facing bug to see it: pointing people at
+`AbortSignal.timeout(ms)` gave them no way to express a per-request budget as a client _default_. A
+signal written into `air.create()` is one instance shared by every request that client will ever
+make, its clock starts at `create()` time, and a fired signal stays fired — `fetch` rejects an
+already-aborted signal before it sends anything, so the client works for five seconds and is then
+permanently broken. So `signal` accepts a function too (`SignalSource`), resolved per request. Note
+what this is not: no `AbortController` inside the client, no bridging, no composing two signals. The
+function only decides _which_ signal gets forwarded, and forwarding is still untouched — the bug
+above stays fixed. A request-level `signal` replaces the client's rather than merging with it;
+composing is `AbortSignal.any` in the caller's own function, which also keeps the Node 18 floor
+intact.
+
+It resolves **after** the headers, immediately before the send, and that order is deliberate: a
+timeout should spend its budget on the request, not on an async header function that had to refresh a
+token first.
+
 **Retries.** A retry loop has to distinguish a transient failure from a request the caller cancelled
 on purpose. The only reliable source for that is the `AbortSignal` itself: `abort(reason)` lets the
 caller supply any reason, so sniffing the error's `name` misclassifies a deliberate cancellation as
@@ -164,8 +180,13 @@ a `Headers` instance, so combining a client's header source with a request's —
 client's, through a chain of `create()` calls — defers every side's evaluation until the request
 that actually needs it. Resolving eagerly at merge time would silently reintroduce the frozen
 token, just one layer removed; that is exactly the bug being fixed, so watch for it if this code
-changes. It does **not** generalize to a `beforeRequest` hook or any other option: the fix is
-narrowly "this one option may be a function," not a new lifecycle stage.
+changes. It does **not** generalize to a `beforeRequest` hook or any other lifecycle stage.
+
+`signal` later took the same shape for the same reason (see above), so the pattern now has two
+instances and a name: **an option whose right value is only knowable per request may be a function.**
+That is the whole rule. It is not a licence to make every option a thunk — `baseURL` and `parse` do
+not change between requests of the same client, and a function there would buy nothing but a call per
+request. Ask whether a _correct_ value can go stale; if it cannot, keep the option plain.
 
 ---
 
@@ -338,6 +359,11 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
 - Test real behavior through the public API, not internals. No test imports from `src/` except `src/index.ts`.
 - Mock `fetch` minimally: the mock builds a real `Request` from what was passed and records it, so
   assertions read against the `Request` that would have been sent. No deep mocking machinery.
+- The one place the mock does more than record: it rejects an already-aborted `signal` before
+  recording, because real `fetch` does. It was added after a bug the mock had been hiding — a signal
+  shared by every request of a client, which looks fine when nothing enforces the check. When the
+  mock and the platform disagree, the mock is wrong; verify against real `fetch` in a throwaway
+  script and fix the mock.
 - Every behavior rule above deserves a test. The ones that have actually caught bugs: FormData
   content-type, query merging with existing params, falsy-vs-nullish query values, empty bodies in
   every parse mode, non-2xx throwing, aborting during a slow body read, and URL joining.

@@ -61,7 +61,7 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 | `query`   | `Query`                                                     | Primitives and arrays of primitives     |
 | `body`    | `unknown`                                                   | Type auto-detected                      |
 | `headers` | `HeaderSource`                                              | Merged with client defaults             |
-| `signal`  | `AbortSignal`                                               | Forwarded to `fetch` untouched          |
+| `signal`  | `SignalSource`                                              | Forwarded to `fetch` untouched          |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection        |
 | `fetch`   | `Fetch`                                                     | Defaults to the global `fetch`          |
 
@@ -138,6 +138,37 @@ await api.get('/users', {
 
 `air` forwards `signal` to `fetch` untouched, so the abort covers the whole request,
 including a slow body download.
+
+To give every request on a client the same budget, pass a **function**. `air` calls it once
+per request, so each one gets its own signal:
+
+```ts
+const api = air.create({ signal: () => AbortSignal.timeout(5000) })
+```
+
+Do not write the signal itself into a client's defaults. It is a single instance shared by
+every request that client will ever make, and its clock starts at `create()` time:
+
+```ts
+// Wrong: five seconds after this line, every request fails instantly without being sent.
+const api = air.create({ signal: AbortSignal.timeout(5000) })
+```
+
+A fired signal stays fired, and `fetch` rejects an already-aborted one before it sends
+anything — so the client works for five seconds and is then permanently broken. This is the
+same trap as a static `Authorization` header, and it has the same fix: a function.
+
+A request-level `signal` replaces the client's rather than combining with it, so compose the
+two yourself when you want both:
+
+```ts
+await api.get('/users', {
+  signal: () => AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+})
+```
+
+Returning `undefined` from the function opts a single request out of the client's budget —
+for one endpoint that is legitimately slow, say.
 
 ### Retries
 
