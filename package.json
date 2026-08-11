@@ -1,7 +1,7 @@
 {
   "name": "@korastd/air",
   "type": "module",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A tiny, modern HTTP client for TypeScript. Built on native fetch.",
   "license": "MIT",
   "sideEffects": false,

@@ -10,6 +10,8 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-08-11
+
 ### Fixed
 
 - **A per-request timeout could not be a client default.** `air` has no `timeout` option and
@@ -115,7 +117,8 @@ dependencies.
 No timeout or retry options, by design — `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/imlargo/air/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/imlargo/air/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/imlargo/air/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/imlargo/air/releases/tag/v0.1.0
