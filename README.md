@@ -246,6 +246,58 @@ A header function on a client and a plain object (or another function) on a requ
 client derived with `create()`, combine the same way static headers do — nothing is resolved,
 or frozen, until the request that actually needs it.
 
+### Refreshing on a 401
+
+A header function keeps a token fresh _before_ a request goes out. It cannot react to one that
+comes back rejected — by then the request has already been sent. `air` has no response hook for
+that, and does not need one: a wrapper around [`fetch`](#fetch) sees the response, so the whole
+pattern is an ordinary function.
+
+```ts
+let access = getToken()
+let inFlight: Promise<string> | null = null
+
+// One renewal at a time, however many requests hit a 401 at once.
+const renew = () =>
+  (inFlight ??= refreshToken()
+    .then((token) => (access = token))
+    .finally(() => (inFlight = null)))
+
+const api = air.create({
+  baseURL: 'https://api.example.com',
+  headers: () => ({ Authorization: `Bearer ${access}` }),
+  fetch: async (url, init) => {
+    const response = await fetch(url, init)
+    if (response.status !== 401) return response
+
+    response.body?.cancel() // the 401 body goes unread; release the connection
+    const token = await renew()
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${token}`)
+    return fetch(url, { ...init, headers })
+  },
+})
+```
+
+Four details worth getting right:
+
+- **Deduplicate the renewal.** Five concurrent requests each get a 401 and each call `renew` —
+  without the `inFlight` promise that is five renewals racing, and the last one to land wins.
+  Same problem and same fix as an async header function, above.
+- **Re-send once, never loop.** The wrapper sends the request again and returns whatever comes
+  back, so a token that is still rejected surfaces as a normal `AirError` instead of spinning.
+- **The signal rides along.** `init` already carries the caller's `signal`, so the retry is
+  covered by it — and spends the _same_ budget. `signal: () => AbortSignal.timeout(5000)` gives
+  the original request, the renewal and the retry five seconds between them, not five each; a
+  renewal slower than what is left aborts the retry, which is the point of a deadline.
+- **A `ReadableStream` body cannot be replayed.** It was consumed by the first attempt, so the
+  retry fails at the transport. Strings, `FormData`, `URLSearchParams` and `Blob`s are all
+  re-readable and retry fine — a streaming upload has to handle its own 401.
+
+The same shape covers the rest of what a response hook would be for: logging, metrics, a
+translated error. It is one function you already know how to write, and it composes — the
+wrapper can wrap another wrapper.
+
 ### Query
 
 Existing search params are preserved, `undefined` and `null` are dropped, and arrays produce

@@ -414,7 +414,9 @@ rejected, so the next person who reads `ofetch` doesn't re-propose them from scr
   interceptor-chain non-goal, confirmed rather than merely asserted: `ofetch`'s implementation
   threads a `FetchContext` object through four optional hook slots and a `callHooks` utility just to
   support them. That cost, seen in a real 280-line `fetch.ts`, is exactly why this library doesn't
-  carry it.
+  carry it. The concrete request behind this ask is almost always "refresh the token on a 401,"
+  which the README now answers with a `fetch` wrapper — point people there rather than re-arguing
+  the general case.
 - **`ignoreResponseError`.** A per-request escape hatch from "non-2xx throws." It doesn't unlock
   anything air can't already do — `catch` + `isAirError` + `error.response` already gets you the
   status and body of a failed request — and it dilutes the one headline promise of the library.
