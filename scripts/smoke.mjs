@@ -2,8 +2,8 @@
 // it imports from src/. This catches a broken build (bad bundling, missing export)
 // that a green test run would happily hide.
 //
-// Deliberately plain Node with no test runner and no syntax past Node 18, because
-// it doubles as the check that `engines: node >=18` is true rather than aspirational.
+// Deliberately plain Node with no test runner and no syntax past Node 20, because
+// it doubles as the check that `engines: node >=20` is true rather than aspirational.
 //
 // Run: pnpm build && node scripts/smoke.mjs
 

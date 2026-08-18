@@ -37,13 +37,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18', '20', '22', '24']
+        node: ['20', '22', '24']
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
 
       # The build toolchain needs a modern Node (tsdown requires >=22.18) even
-      # though what it emits runs on 18 — so build here, then switch below.
+      # though what it emits runs on 20 — so build here, then switch below.
       - uses: actions/setup-node@v7
         with:
           node-version: '24'

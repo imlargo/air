@@ -13,7 +13,7 @@ library, see [README.md](./README.md).
 Concretely:
 
 - **Zero runtime dependencies.** Never add one. If something needs a dependency, it doesn't belong in `air`.
-- **Native `fetch` only.** No XHR, no polyfills, no `node-fetch` fallback. Node 18+, browsers, Deno, Bun, edge runtimes. The `fetch` option accepts another fetch-_shaped_ function — a framework's per-request wrapper — which is not the same as supporting a second transport.
+- **Native `fetch` only.** No XHR, no polyfills, no `node-fetch` fallback. Node 20+, browsers, Deno, Bun, edge runtimes. The `fetch` option accepts another fetch-_shaped_ function — a framework's per-request wrapper — which is not the same as supporting a second transport.
 - **Predictable over clever.** A reader should be able to guess what a function does from its signature.
 - **Small surface area.** Fewer options, better defaults. Every new option is a permanent maintenance cost and a permanent thing users have to learn.
 - **Types are the docs.** Full generics, no `any` in public types. `unknown` is the fallback, never `any`.
@@ -147,8 +147,7 @@ permanently broken. So `signal` accepts a function too (`SignalSource`), resolve
 what this is not: no `AbortController` inside the client, no bridging, no composing two signals. The
 function only decides _which_ signal gets forwarded, and forwarding is still untouched — the bug
 above stays fixed. A request-level `signal` replaces the client's rather than merging with it;
-composing is `AbortSignal.any` in the caller's own function, which also keeps the Node 18 floor
-intact.
+composing is `AbortSignal.any` in the caller's own function.
 
 It resolves **after** the headers, immediately before the send, and that order is deliberate: a
 timeout should spend its budget on the request, not on an async header function that had to refresh a
@@ -439,7 +438,7 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   compile. `pnpm typecheck` covers `test/`, so loosening a type fails the build.
 - `scripts/smoke.mjs` covers what the vitest suite structurally cannot: it imports the **built**
   `dist/`, not `src/`, so a broken build — bad bundling, a dropped export — fails there even with a
-  fully green test run. It is plain Node with no test runner and no syntax past Node 18, because CI
+  fully green test run. It is plain Node with no test runner and no syntax past Node 20, because CI
   also runs it on the oldest version `engines` claims. Keep both of those properties if you edit it.
 - `examples/demo.mjs` makes real network requests and is not part of `pnpm test` — run it by hand
   (`pnpm demo`) to sanity-check the library against the real thing, not against mocks.
@@ -562,7 +561,7 @@ Two workflows in `.github/workflows/`:
 - `check` — format check, lint, typecheck, tests and build on Node 24. The correctness gate.
 - `compat` — builds on Node 24, then runs `scripts/smoke.mjs` against the built `dist/` on Node
   18, 20, 22 and 24. This exists because the two Node versions in play are not the same one: the
-  build toolchain needs ≥22.18 (tsdown) while the package claims `engines: node >=18` for
+  build toolchain needs ≥22.18 (tsdown) while the package claims `engines: node >=20` for
   consumers. Without this job that claim would be an assertion nobody checks. It deliberately uses
   plain `node` rather than vitest, since vitest itself needs ≥20 and could not run on the oldest
   version being verified.

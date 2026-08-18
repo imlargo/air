@@ -11,7 +11,7 @@ A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
 - Non-2xx responses throw
 - Bring your own `fetch` — SvelteKit's `event.fetch` and friends drop straight in
 - No timeout or retry machinery — `AbortSignal` and a `for` loop already do that
-- Works in Node 18+, browsers, Deno, Bun and edge runtimes
+- Works in Node 20+, browsers, Deno, Bun and edge runtimes
 
 ```bash
 pnpm add @korastd/air
@@ -127,8 +127,8 @@ There is no `timeout` option, because the platform already has one:
 await api.get('/users', { signal: AbortSignal.timeout(5000) })
 ```
 
-To combine a timeout with your own cancellation, compose the signals — `AbortSignal.any`
-needs Node 20+:
+To combine a timeout with your own cancellation, compose the signals with `AbortSignal.any`
+(Node 20.3+, so every version in the supported range but the first three patches of 20):
 
 ```ts
 await api.get('/users', {

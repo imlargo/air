@@ -45,6 +45,13 @@ the outside does not get a line here; the git history already has it.
 
 - **`baseURL` accepts a `URL`**, matching the request target, which has taken one since 0.1.0.
 
+### Changed
+
+- **`engines.node` is now `>=20`**, up from `>=18`. The README told users to compose signals
+  with `AbortSignal.any`, which needs 20.3 — so on the version we claimed to support, our own
+  documentation handed you a `TypeError`. Node 18 has been end-of-life since April 2025, and
+  the CI matrix now runs 20, 22 and 24.
+
 ## [0.4.1] — 2026-08-18
 
 ### Fixed
