@@ -5,7 +5,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write # creating the GitHub release at the end of this job
   id-token: write # npm trusted publishing (OIDC) and provenance both need this
 
 # No hooks to install on a CI checkout; see the note in ci.yml.
@@ -61,3 +61,25 @@ jobs:
       #
       # prepublishOnly runs the build; provenance is attached automatically.
       - run: npm publish --access public
+
+      # A tag on its own renders as an empty page, so anyone arriving from a
+      # changelog link or the npm sidebar sees nothing. The entry the step above
+      # already proved exists is the release body — written once, published
+      # twice, never drifting apart.
+      #
+      # Last, deliberately: a release that announces a version npm does not have
+      # is worse than no release at all.
+      - name: Announce the release on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          awk -v tag="$tag" '
+            index($0, "## [" tag "]") == 1 { found = 1; next }
+            /^## \[/ { found = 0 }
+            found
+          ' CHANGELOG.md > release-notes.md
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            --verify-tag
