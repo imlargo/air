@@ -21,6 +21,7 @@ export default defineConfig(
         AbortSignal: 'readonly',
         FormData: 'readonly',
         URL: 'readonly',
+        URLSearchParams: 'readonly',
         setTimeout: 'readonly',
       },
     },

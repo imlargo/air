@@ -1,13 +1,14 @@
 import { prepareBody } from './body.js'
 import { AirError } from './error.js'
 import { parseResponse } from './parse.js'
-import { buildURL } from './url.js'
+import { buildURL, toQueryRecord } from './url.js'
 import type {
   AirClient,
   AirOptions,
   AirRequest,
   AirResponse,
   AirURL,
+  HeaderInit,
   HeaderSource,
   SignalSource,
 } from './types.js'
@@ -24,8 +25,27 @@ declare global {
   }
 }
 
-async function resolveHeaders(source?: HeaderSource): Promise<HeadersInit | undefined> {
+async function resolveHeaders(source?: HeaderSource): Promise<HeaderInit | undefined> {
   return typeof source === 'function' ? source() : source
+}
+
+// The one place the record form is treated differently from the other HeadersInit
+// shapes, and only for removal: `null` deletes rather than sets. A Headers instance
+// and a tuple list cannot express "delete" at all, so they take the plain path.
+function applyHeaders(target: Headers, source?: HeaderInit): void {
+  if (!source) return
+
+  if (source instanceof Headers || Array.isArray(source)) {
+    new Headers(source).forEach((value, key) => target.set(key, value))
+    return
+  }
+
+  for (const [key, value] of Object.entries(source)) {
+    // undefined alongside null because `{ Authorization: cond ? token : undefined }` is
+    // how this gets written by hand, and setting it would send the string "undefined".
+    if (value === null || value === undefined) target.delete(key)
+    else target.set(key, value)
+  }
 }
 
 function resolveSignal(source?: SignalSource | null): AbortSignal | null | undefined {
@@ -37,10 +57,9 @@ function resolveSignal(source?: SignalSource | null): AbortSignal | null | undef
 // of create() calls, each adding its own source on top of the last.
 function mergeHeaders(base?: HeaderSource, extra?: HeaderSource): () => Promise<Headers> {
   return async () => {
-    const headers = new Headers(await resolveHeaders(base))
-    new Headers(await resolveHeaders(extra)).forEach((value, key) =>
-      headers.set(key, value),
-    )
+    const headers = new Headers()
+    applyHeaders(headers, await resolveHeaders(base))
+    applyHeaders(headers, await resolveHeaders(extra))
     return headers
   }
 }
@@ -53,8 +72,12 @@ function merge(base: AirOptions, extra?: AirOptions): AirOptions {
     headers: mergeHeaders(base.headers, extra.headers),
     // undefined (not {}) when neither side has one: buildURL treats a query of {}
     // as "process the URL's search string," which re-encodes it (%20 -> +) even
-    // when no merge was actually requested.
-    query: base.query || extra.query ? { ...base.query, ...extra.query } : undefined,
+    // when no merge was actually requested. Both sides go through toQueryRecord
+    // first, since a URLSearchParams spreads to nothing.
+    query:
+      base.query || extra.query
+        ? { ...toQueryRecord(base.query ?? {}), ...toQueryRecord(extra.query ?? {}) }
+        : undefined,
   }
 }
 
@@ -99,7 +122,12 @@ async function request(path: AirURL, options: AirOptions): Promise<AirResponse<u
   const url = buildURL(typeof path === 'string' ? path : path.href, baseURL, query)
   const verb = method.toUpperCase()
 
-  const requestHeaders = new Headers(await resolveHeaders(headers))
+  // Built with applyHeaders rather than the Headers constructor, because a client whose
+  // defaults are the only header source never passes through mergeHeaders — merge()
+  // returns base untouched when there are no per-request options — and a `null` here
+  // would otherwise be sent as the string "null".
+  const requestHeaders = new Headers()
+  applyHeaders(requestHeaders, await resolveHeaders(headers))
   let payload: BodyInit | undefined
   let duplex: 'half' | undefined
   if (verb !== 'GET' && verb !== 'HEAD') {

@@ -86,11 +86,11 @@ Keep this list short. Adding to it requires justification.
 
 | Option    | Type                                                      | Notes                                                                        |
 | --------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `baseURL` | `string`                                                  | Joined with the path, no double slashes                                      |
+| `baseURL` | `string \| URL`                                           | Joined with the path, no double slashes                                      |
 | `method`  | `string`                                                  | Inferred by the shortcuts, uppercased before sending                         |
-| `query`   | `Query`                                                   | Primitives and arrays of primitives only                                     |
+| `query`   | `Query`                                                   | A record, a `URLSearchParams`, or tuples; primitive values only              |
 | `body`    | `unknown`                                                 | Type auto-detected (see below)                                               |
-| `headers` | `HeaderSource`                                            | Merged with client defaults, request wins; may be a function                 |
+| `headers` | `HeaderSource`                                            | Merged with client defaults, request wins; `null` removes; may be a function |
 | `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection; the body's shape only, never the return's  |
 | `fetch`   | `Fetch`                                                   | The global `fetch` unless given one; merges like the rest                    |
@@ -198,6 +198,9 @@ These are the details that make the library feel good. Get them exactly right.
 
 ### URL building
 
+- `baseURL` is a `string` or a `URL`, matching the request target — a caller holding a parsed
+  URL should not have to write `.href`. A `URL` is normalized through `.href` and then joined
+  exactly like a string, so nothing else about the rule changes.
 - `baseURL` and the path are joined as **strings**, not resolved as URLs. `https://api.test/v1` +
   `/users` → `https://api.test/v1/users`. `new URL()` resolution would drop the `/v1` prefix, which
   surprises everyone who mounts an API under a path.
@@ -211,6 +214,16 @@ These are the details that make the library feel good. Get them exactly right.
 
 ### Query serialization
 
+- `query` accepts three spellings of the same thing: the record, a `URLSearchParams`, or an
+  array of `[key, value]` tuples. The last two are what a caller already holds when the params
+  came from elsewhere — the current URL's `searchParams`, a form, another library — and the
+  narrow type made those a small dead end rather than a style choice, because `Object.fromEntries`
+  keeps only the last of a repeated key and `?tag=a&tag=b` silently became `?tag=b`. Same argument
+  as `URL` for the request target: the option was narrower than the primitive it wraps.
+- `toQueryRecord` in `url.ts` folds the other two into the record, **grouping** repeated keys into
+  an array rather than overwriting. Both `buildURL` and `merge()` call it — `merge()` because a
+  `URLSearchParams` spreads to `{}`, so a client default written that way would vanish the moment
+  a request passed any options at all. There is a test pinning each.
 - `query` is merged into the URL's search params.
 - Existing search params in the URL are preserved, not overwritten. A repeated key appends.
 - `undefined` and `null` values are dropped entirely — but `false`, `0` and `''` are kept. Dropping
@@ -235,6 +248,23 @@ These are the details that make the library feel good. Get them exactly right.
 
 - `headers` merges with the client's defaults, request wins on a shared key, for every
   `HeadersInit` shape — a plain object, a `Headers` instance, or an array of tuples.
+- A value of `null` or `undefined` in the **record** form removes an inherited header instead of
+  setting one. Every other option could already be opted out of per request (`baseURL: undefined`,
+  `query: { key: undefined }`, `signal: null`, `fetch: undefined`); headers could not, by any
+  means — `''` sends an empty header, which is not the same as absent, and a function only ever
+  adds, so a derived client could never become anonymous. It is `signal: null`'s idiom one level
+  deeper, and `undefined` behaves the same because `query` already drops both.
+- That sentinel is **record-only**, and it is the one place the shapes are not uniform. A `Headers`
+  instance has no way to represent "delete", so setting is uniform across shapes and removing is
+  not. The asymmetry is the price, deliberately paid: the alternative design was
+  `headers: (inherited) => ...`, which is strictly more powerful, keeps every shape uniform, and is
+  one argument away from the `beforeRequest` hook the non-goals forbid.
+- Removal runs through `applyHeaders` in `client.ts`, and **`request()` has to call it too**, not
+  just `mergeHeaders`. `create()` takes its defaults as given and `merge()` hands them straight
+  back when a call passes no options, so a record written into the exported `create()` reaches
+  `request()` having never been normalized; the `Headers` constructor would stringify the `null`
+  and send `Authorization: null`. `air.create()` does not hit that path because it merges — which
+  is precisely why the test for it uses `create` directly.
 - `headers` may also be a function (sync or async) returning one of the above; see Lazy headers.
 - A header function is called once per request and is **not** deduplicated. That is correct — the
   point is a fresh value per request — but an async one that hits the network will do so on every

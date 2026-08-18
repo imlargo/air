@@ -56,11 +56,11 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 
 | Option    | Type                                                      | Notes                                   |
 | --------- | --------------------------------------------------------- | --------------------------------------- |
-| `baseURL` | `string`                                                  | Joined with the path, no double slashes |
+| `baseURL` | `string \| URL`                                           | Joined with the path, no double slashes |
 | `method`  | `string`                                                  | Inferred by the shortcuts               |
-| `query`   | `Query`                                                   | Primitives and arrays of primitives     |
+| `query`   | `Query`                                                   | Record, `URLSearchParams`, or tuples    |
 | `body`    | `unknown`                                                 | Type auto-detected                      |
-| `headers` | `HeaderSource`                                            | Merged with client defaults             |
+| `headers` | `HeaderSource`                                            | Merged with defaults; `null` removes    |
 | `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched          |
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection        |
 | `fetch`   | `Fetch`                                                   | Defaults to the global `fetch`          |
@@ -206,6 +206,23 @@ await withRetry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), s
 `headers` merges with the client's defaults, the request winning on a shared key — same rule
 for every `HeadersInit` shape (`Headers`, a plain object, or an array of tuples).
 
+To _remove_ an inherited header rather than replace it, set it to `null`:
+
+```ts
+const api = air.create({ headers: { Authorization: `Bearer ${token}` } })
+
+await api.get('/public', { headers: { Authorization: null } }) // sent without it
+const anonymous = api.create({ headers: { Authorization: null } }) // and so is every call on this
+```
+
+`''` is not the same thing — it sends an empty header — and a function can only ever add, so
+`null` is the only way to say it. `undefined` does the same, so
+`{ Authorization: signedIn ? token : undefined }` works as written.
+
+This is the one place the shapes are not uniform: removal is for the plain-object form only,
+because a `Headers` instance has no way to represent "delete". Setting a header behaves the
+same across all three.
+
 A plain object is evaluated once, when you write it. That is a problem for anything that
 changes after the client is created — a bearer token that gets refreshed, for instance:
 
@@ -308,9 +325,28 @@ air.get('/search?q=air', { query: { tags: ['a', 'b'], page: 2, cursor: null } })
 // /search?q=air&tags=a&tags=b&page=2
 ```
 
+`query` also takes a `URLSearchParams` or an array of `[key, value]` tuples, for when the
+params came from somewhere else and you already hold one:
+
+```ts
+await api.get('/search', { query: new URL(location.href).searchParams })
+await api.get('/search', {
+  query: [
+    ['tag', 'a'],
+    ['tag', 'b'],
+  ],
+})
+```
+
+All three merge with a client's default `query` the same way. Repeated keys survive the
+conversion — `?tag=a&tag=b` stays both — which is the reason to hand the `URLSearchParams`
+over rather than convert it yourself: `Object.fromEntries` keeps only the last one.
+
 Only primitives and arrays of primitives are allowed. Objects and `Date`s are a compile
 error rather than a silent `[object Object]` — serialize them yourself
-(`{ since: date.toISOString() }`).
+(`{ since: date.toISOString() }`). If you want a different convention for those — bracket
+notation, JSON-encoded values — write the serializer and hand `air` its output as tuples or
+a `URLSearchParams`; it merges like any other query.
 
 Type your params with `type`, not `interface`: TypeScript gives object type aliases an
 implicit index signature, and interfaces never get one, so an `interface` is not assignable

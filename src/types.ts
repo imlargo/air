@@ -5,12 +5,39 @@ export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream'
 
 export type QueryValue = string | number | boolean | null | undefined
 
-export type Query = Record<string, QueryValue | readonly QueryValue[]>
+// Three spellings of the same thing. The record is the one to reach for; the other
+// two are what a caller already holds when the params came from somewhere else — the
+// current URL's `searchParams`, a form, another library. Converting one of those into
+// the record by hand is a grouping loop rather than a one-liner, because
+// Object.fromEntries keeps only the last of a repeated key and `?tag=a&tag=b`
+// collapses to `?tag=b`. Same argument as `URL` for the request target: the option
+// was narrower than the primitive it wraps.
+export type Query =
+  | Record<string, QueryValue | readonly QueryValue[]>
+  | URLSearchParams
+  | readonly (readonly [string, QueryValue])[]
+
+// `null` as a value removes a header a client default put there. Nothing else can
+// say that: '' sends an empty header, which is not the same as absent, and a function
+// only ever adds. It is the idiom `signal: null` already uses for "explicitly absent",
+// one level deeper. `undefined` does the same, because `query` already drops both and
+// splitting them here would be an inconsistency with no argument behind it — and
+// because `{ Authorization: enabled ? token : undefined }` is how this gets written.
+//
+// It works for the record form only — a Headers instance has no way to represent
+// "delete" — so the merge rule is uniform across every HeadersInit shape for *setting*
+// a header and record-only for *removing* one. That asymmetry is the price of the
+// sentinel and it is deliberate; the alternative was a function of the inherited
+// headers, which is one argument away from the beforeRequest hook the non-goals forbid.
+//
+// Deliberately not re-exported from index.ts: it names a shape the implementation
+// needs, and `HeaderSource` is the one callers write.
+export type HeaderInit = HeadersInit | Record<string, string | null | undefined>
 
 // A function so a long-lived client (`air.create({ headers })`) can hand back a
 // fresh value — e.g. the current bearer token — on every request instead of the
 // one captured when the client was created.
-export type HeaderSource = HeadersInit | (() => HeadersInit | Promise<HeadersInit>)
+export type HeaderSource = HeaderInit | (() => HeaderInit | Promise<HeaderInit>)
 
 // Same reason as HeaderSource, and a sharper failure: an AbortSignal written into
 // a client's defaults is one instance shared by every request it will ever make,
@@ -27,7 +54,9 @@ export type SignalSource = AbortSignal | (() => AbortSignal | null | undefined)
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
 export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'signal'> {
-  baseURL?: string
+  // `URL` for the same reason the request target takes one: a caller holding a parsed
+  // URL should not have to write `.href` to hand it over.
+  baseURL?: string | URL
   query?: Query
   body?: unknown
   headers?: HeaderSource

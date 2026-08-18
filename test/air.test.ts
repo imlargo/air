@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import air, { AirError, isAirError } from '../src/index.js'
+import air, { AirError, create, isAirError } from '../src/index.js'
 import type { Fetch } from '../src/index.js'
 import { json, mockFetch, stall } from './mock.js'
 
@@ -95,6 +95,19 @@ describe('url', () => {
     expect(requests[0]!.url).toBe('https://api.test/s?existing=1&page=2')
   })
 
+  it('accepts a URL instance as the baseURL', async () => {
+    const requests = mockFetch()
+    const api = air.create({ baseURL: new URL('https://api.test/v1/') })
+    await api.get('/users')
+    expect(requests[0]!.url).toBe('https://api.test/v1/users')
+  })
+
+  it('keeps the path prefix of a URL baseURL, same as a string one', async () => {
+    const requests = mockFetch()
+    await air.get('users', { baseURL: new URL('https://api.test/v1') })
+    expect(requests[0]!.url).toBe('https://api.test/v1/users')
+  })
+
   it('ignores baseURL when the target is a URL instance', async () => {
     const requests = mockFetch()
     await air.get(new URL('https://other.test/ping'), { baseURL: 'https://api.test' })
@@ -149,6 +162,74 @@ describe('query', () => {
     const requests = mockFetch()
     await air.get('https://api.test/s#results', { query: { page: 2 } })
     expect(requests[0]!.url).toBe('https://api.test/s?page=2#results')
+  })
+
+  it('accepts a URLSearchParams', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', {
+      query: new URLSearchParams({ page: '2', q: 'air' }),
+    })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=2&q=air')
+  })
+
+  it('accepts an array of tuples', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', {
+      query: [
+        ['page', 2],
+        ['active', true],
+      ],
+    })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=2&active=true')
+  })
+
+  // The reason the narrow type was a dead end rather than a style preference:
+  // Object.fromEntries keeps only the last of a repeated key, so converting a
+  // URLSearchParams into the record form by hand loses params silently.
+  it('keeps every value of a repeated key in a URLSearchParams', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', {
+      query: new URLSearchParams('tag=a&tag=b&tag=c'),
+    })
+    expect(requests[0]!.url).toBe('https://api.test/s?tag=a&tag=b&tag=c')
+  })
+
+  it('keeps every value of a repeated key in a tuple list', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/s', {
+      query: [
+        ['tag', 'a'],
+        ['tag', 'b'],
+      ],
+    })
+    expect(requests[0]!.url).toBe('https://api.test/s?tag=a&tag=b')
+  })
+
+  it('merges a URLSearchParams request query onto a client record default', async () => {
+    const requests = mockFetch()
+    const api = air.create({ baseURL: 'https://api.test', query: { key: 'abc' } })
+    await api.get('/s', { query: new URLSearchParams({ page: '2' }) })
+    expect(requests[0]!.url).toBe('https://api.test/s?key=abc&page=2')
+  })
+
+  it('carries a URLSearchParams client default into a request that passes none', async () => {
+    const requests = mockFetch()
+    const api = air.create({
+      baseURL: 'https://api.test',
+      query: new URLSearchParams('tag=a&tag=b'),
+    })
+    await api.get('/s')
+    expect(requests[0]!.url).toBe('https://api.test/s?tag=a&tag=b')
+  })
+
+  it('lets a request override a URLSearchParams client default by key', async () => {
+    const requests = mockFetch()
+    const api = air.create({
+      baseURL: 'https://api.test',
+      query: new URLSearchParams('page=1&key=abc'),
+    })
+    await api.get('/s', { query: { page: 9 } })
+    expect(requests[0]!.url).toBe('https://api.test/s?page=9&key=abc')
   })
 
   it('lets a request override a client default with the same key', async () => {
@@ -864,6 +945,71 @@ describe('clients', () => {
     expect(requests[0]!.url).toBe('https://api.test/me')
     expect(requests[0]!.headers.get('x-client')).toBe('air')
     expect(requests[0]!.headers.get('x-scope')).toBe('admin')
+  })
+
+  it('drops an inherited header when a request sets it to null', async () => {
+    const requests = mockFetch()
+    const api = air.create({
+      headers: { Authorization: 'Bearer secret', 'X-Keep': 'yes' },
+    })
+    await api.get('https://api.test/public', { headers: { Authorization: null } })
+    expect(requests[0]!.headers.get('authorization')).toBeNull()
+    expect(requests[0]!.headers.get('x-keep')).toBe('yes')
+  })
+
+  it('lets a derived client become anonymous', async () => {
+    const requests = mockFetch()
+    const api = air.create({
+      baseURL: 'https://api.test',
+      headers: () => ({ Authorization: 'Bearer secret' }),
+    })
+    const anonymous = api.create({ headers: { Authorization: null } })
+    await anonymous.get('/public')
+    expect(requests[0]!.headers.get('authorization')).toBeNull()
+    expect(requests[0]!.url).toBe('https://api.test/public')
+  })
+
+  // The one path where a raw record reaches request() unnormalized: create() takes its
+  // defaults as given, and merge() hands them straight back when a call passes no
+  // options, so nothing has run applyHeaders yet. `air.create()` does not reach it —
+  // it merges — which is exactly why it needs its own test. Without the fix the
+  // Headers constructor stringifies the null and sends `Authorization: null`.
+  it('honours null in defaults that never passed through a merge', async () => {
+    const requests = mockFetch()
+    const api = create({ headers: { Authorization: null, 'X-Keep': 'yes' } })
+    await api.get('https://api.test/public')
+    expect(requests[0]!.headers.get('authorization')).toBeNull()
+    expect(requests[0]!.headers.get('x-keep')).toBe('yes')
+  })
+
+  it('treats null on a header nobody set as a no-op', async () => {
+    const requests = mockFetch()
+    await air.get('https://api.test/a', { headers: { 'X-Absent': null } })
+    expect(requests[0]!.headers.get('x-absent')).toBeNull()
+  })
+
+  it('drops a header a function put there', async () => {
+    const requests = mockFetch()
+    const api = air.create({ headers: async () => ({ Authorization: 'Bearer secret' }) })
+    await api.get('https://api.test/public', { headers: () => ({ Authorization: null }) })
+    expect(requests[0]!.headers.get('authorization')).toBeNull()
+  })
+
+  it('drops rather than sends the string undefined', async () => {
+    const requests = mockFetch()
+    const api = air.create({ headers: { Authorization: 'Bearer secret' } })
+    await api.get('https://api.test/public', { headers: { Authorization: undefined } })
+    expect(requests[0]!.headers.get('authorization')).toBeNull()
+  })
+
+  it('sets a header back after a client dropped it', async () => {
+    const requests = mockFetch()
+    const api = air.create({ headers: { Authorization: 'Bearer one' } })
+    const anonymous = api.create({ headers: { Authorization: null } })
+    await anonymous
+      .create({ headers: { Authorization: 'Bearer two' } })
+      .get('https://api.test/a')
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer two')
   })
 
   it('merges every HeadersInit shape', async () => {

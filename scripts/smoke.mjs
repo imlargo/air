@@ -121,6 +121,24 @@ await timed.get('https://x.test/b')
 assert.ok(first instanceof AbortSignal, 'resolves the signal function')
 assert.notEqual(first, seen.init.signal, 'mints a fresh signal per request')
 
+// A null header removes one a client default set, rather than sending "null"
+stub(() => json({}))
+const authed = create({ headers: { Authorization: 'Bearer t', 'X-Keep': 'yes' } })
+await authed.get('https://x.test/public', { headers: { Authorization: null } })
+assert.equal(seen.request.headers.get('authorization'), null, 'null drops the header')
+assert.equal(seen.request.headers.get('x-keep'), 'yes', 'and leaves the others alone')
+
+// query takes the two shapes a caller is likely to already hold, repeated keys intact
+stub(() => json({}))
+await air.get('https://x.test/s', { query: new URLSearchParams('tag=a&tag=b') })
+assert.equal(seen.url, 'https://x.test/s?tag=a&tag=b', 'accepts a URLSearchParams')
+stub(() => json({}))
+await air.get('https://x.test/s', {
+  query: [['page', 2]],
+  baseURL: new URL('https://y.test'),
+})
+assert.equal(seen.url, 'https://x.test/s?page=2', 'accepts tuples; absolute path wins')
+
 // Non-2xx throws a recognizable AirError
 stub(() => json({ message: 'nope' }, { status: 404, statusText: 'Not Found' }))
 const error = await air.get('https://x.test/missing').catch((e) => e)

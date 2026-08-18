@@ -10,6 +10,41 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Added
+
+- **`null` removes an inherited header.** Every option could already be opted out of per
+  request — `baseURL: undefined`, `query: { key: undefined }`, `signal: null`,
+  `fetch: undefined` — except headers, which had no way at all: `''` sends an empty header,
+  which is not the same as absent, and a function only ever adds. An authenticated client with
+  one public endpoint meant abandoning `create()` and re-specifying everything on a fresh client.
+
+  ```ts
+  const api = air.create({ headers: { Authorization: `Bearer ${token}` } })
+
+  await api.get('/public', { headers: { Authorization: null } })
+  const anonymous = api.create({ headers: { Authorization: null } })
+  ```
+
+  `undefined` does the same, so `{ Authorization: signedIn ? token : undefined }` works as
+  written instead of sending the string `"undefined"`. Removal is for the plain-object form
+  only — a `Headers` instance cannot represent "delete" — so setting a header stays uniform
+  across every shape and removing one is record-only.
+
+- **`query` accepts a `URLSearchParams` or an array of `[key, value]` tuples**, not just the
+  record. Both are what you already hold when the params came from somewhere else — the current
+  URL, a form, another library — and handing one over beats converting it, because
+  `Object.fromEntries` keeps only the last of a repeated key and turns `?tag=a&tag=b` into
+  `?tag=b`. All three merge with a client's default `query` identically.
+
+  ```ts
+  await api.get('/search', { query: new URL(location.href).searchParams })
+  ```
+
+  Values stay primitives-only in every shape. A different convention for dates or nested
+  objects is still yours to write — and now its output plugs straight into `query`.
+
+- **`baseURL` accepts a `URL`**, matching the request target, which has taken one since 0.1.0.
+
 ## [0.4.1] — 2026-08-18
 
 ### Fixed
