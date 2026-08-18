@@ -54,16 +54,16 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 
 ## Options
 
-| Option    | Type                                                        | Notes                                   |
-| --------- | ----------------------------------------------------------- | --------------------------------------- |
-| `baseURL` | `string`                                                    | Joined with the path, no double slashes |
-| `method`  | `string`                                                    | Inferred by the shortcuts               |
-| `query`   | `Query`                                                     | Primitives and arrays of primitives     |
-| `body`    | `unknown`                                                   | Type auto-detected                      |
-| `headers` | `HeaderSource`                                              | Merged with client defaults             |
-| `signal`  | `SignalSource`                                              | Forwarded to `fetch` untouched          |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection        |
-| `fetch`   | `Fetch`                                                     | Defaults to the global `fetch`          |
+| Option    | Type                                                      | Notes                                   |
+| --------- | --------------------------------------------------------- | --------------------------------------- |
+| `baseURL` | `string`                                                  | Joined with the path, no double slashes |
+| `method`  | `string`                                                  | Inferred by the shortcuts               |
+| `query`   | `Query`                                                   | Primitives and arrays of primitives     |
+| `body`    | `unknown`                                                 | Type auto-detected                      |
+| `headers` | `HeaderSource`                                            | Merged with client defaults             |
+| `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched          |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection        |
+| `fetch`   | `Fetch`                                                   | Defaults to the global `fetch`          |
 
 Anything else is forwarded to the underlying `fetch` call.
 
@@ -332,13 +332,62 @@ to stream a request at all. Pass your own `duplex` to override it.
 Parsed from the response `Content-Type`: JSON for `application/json` and `+json` suffixes,
 text for `text/*`, a `Blob` otherwise. `204` and empty bodies resolve to `null`.
 
-Use `parse: 'response'` when you need the response itself — headers on a successful call,
-or the raw stream:
+`parse` overrides the detection — `'json'`, `'text'`, `'blob'`, `'arrayBuffer'`, or
+`'stream'` for the body unread as a `ReadableStream`:
 
 ```ts
-const response = await api.get<Response>('/users', { parse: 'response' })
-response.headers.get('link')
+const csv = await api.get<string>('/export', { parse: 'text' })
+const body = await api.get<ReadableStream>('/download', { parse: 'stream' })
 ```
+
+### Raw
+
+A call resolves to the body, which is the point — but a `Link` header, an `ETag`, a rate
+limit or a `201` vs `200` lives on the response, not in it. `client.raw` is the same client,
+resolving to both halves:
+
+```ts
+const { data, response } = await api.raw.get<User[]>('/users')
+
+data[0].name
+response.headers.get('link')
+response.status
+```
+
+`raw` carries every shortcut, is callable directly, and parses exactly like the plain
+client — `parse` and every other option behave the same. It only adds the response; it
+never changes the body.
+
+Which is also why `response` is there for its headers, status and URL, not for its body: a
+body can be read once, and `data` is that read. `response.json()` on what you get back
+throws, because `response.bodyUsed` is already `true`.
+
+Unless you asked for the body unread, in which case `data` **is** `response.body` — the same
+stream under two names, not two copies. Reading either one consumes the other. Pairing them
+is the point: the header tells you how to read the stream.
+
+```ts
+const { data, response } = await api.raw.get<ReadableStream>('/big.zip', {
+  parse: 'stream',
+})
+
+const total = Number(response.headers.get('content-length'))
+const reader = data.getReader()
+let loaded = 0
+
+for (;;) {
+  const { done, value } = await reader.read()
+  if (done) break
+  loaded += value.length
+  onProgress(loaded / total)
+}
+```
+
+`getReader()` rather than `for await (const chunk of data)`: async iteration over a
+`ReadableStream` works in Node and Chrome, and throws in Safari and Firefox. A reader loop
+works everywhere `air` claims to.
+
+A non-2xx still throws, from both clients. The failed response is `error.response`.
 
 ### Errors
 
@@ -369,6 +418,7 @@ still works when an app ends up with two copies of the package loaded.
 ```ts
 air.get<User[]>('/users') // Promise<User[]>
 air.get('/users') // Promise<unknown> — never `any`
+air.raw.get<User[]>('/users') // Promise<AirResponse<User[]>> — { data, response }
 ```
 
 ## Development

@@ -6,6 +6,7 @@ import type {
   AirClient,
   AirOptions,
   AirRequest,
+  AirResponse,
   AirURL,
   HeaderSource,
   SignalSource,
@@ -76,7 +77,10 @@ function fail(
   throw error
 }
 
-async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
+// Always resolves to both halves; the two clients differ only in which one they
+// hand back. That keeps `raw` a second projection of one result rather than a
+// second code path through the request.
+async function request(path: AirURL, options: AirOptions): Promise<AirResponse<unknown>> {
   // `send` defaults inside the call, not at module load, so it picks up whatever
   // fetch the environment has at request time — a polyfill installed later, or a
   // test stubbing the global.
@@ -146,30 +150,52 @@ async function request<T>(path: AirURL, options: AirOptions): Promise<T> {
   }
 
   try {
-    return (await parseResponse(response, parse)) as T
+    return { data: await parseResponse(response, parse), response }
   } catch (error) {
     const reason = reasonFor(error, 'returned an unreadable body')
     fail(`${verb} ${url} ${reason}`, info, { response, cause: error })
   }
 }
 
+// Listed once, so a verb can never be added to one client and forgotten in the
+// other. `make` stays generic through the inference, which is what keeps the
+// per-call <T> on every shortcut it builds.
+function verbs<M>(make: (method: string) => M) {
+  return {
+    get: make('GET'),
+    post: make('POST'),
+    put: make('PUT'),
+    patch: make('PATCH'),
+    delete: make('DELETE'),
+    head: make('HEAD'),
+    options: make('OPTIONS'),
+  }
+}
+
 export function create(defaults: AirOptions = {}): AirClient {
+  const settle = (options?: AirOptions, method?: string): AirOptions =>
+    method ? { ...merge(defaults, options), method } : merge(defaults, options)
+
   const call = <T = unknown>(url: AirURL, options?: AirOptions): Promise<T> =>
-    request<T>(url, merge(defaults, options))
+    request(url, settle(options)).then((result) => result.data as T)
 
   const shortcut =
     (method: string) =>
     <T = unknown>(url: AirURL, options?: AirOptions): Promise<T> =>
-      request<T>(url, { ...merge(defaults, options), method })
+      request(url, settle(options, method)).then((result) => result.data as T)
 
-  return Object.assign(call, {
-    get: shortcut('GET'),
-    post: shortcut('POST'),
-    put: shortcut('PUT'),
-    patch: shortcut('PATCH'),
-    delete: shortcut('DELETE'),
-    head: shortcut('HEAD'),
-    options: shortcut('OPTIONS'),
+  const rawCall = <T = unknown>(
+    url: AirURL,
+    options?: AirOptions,
+  ): Promise<AirResponse<T>> => request(url, settle(options)) as Promise<AirResponse<T>>
+
+  const rawShortcut =
+    (method: string) =>
+    <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>> =>
+      request(url, settle(options, method)) as Promise<AirResponse<T>>
+
+  return Object.assign(call, verbs(shortcut), {
+    raw: Object.assign(rawCall, verbs(rawShortcut)),
     create: (options?: AirOptions): AirClient => create(merge(defaults, options)),
   })
 }

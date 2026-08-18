@@ -70,10 +70,26 @@ assert.equal(
 stub(() => new Response(null, { status: 204 }))
 assert.equal(await air.delete('https://x.test/a'), null, '204 resolves to null')
 
-// parse: 'response' hands back the Response
+// The raw client hands back the body and the response
 stub(() => json({ ok: true }, { headers: { 'x-total': '7' } }))
-const response = await air.get('https://x.test/a', { parse: 'response' })
+const { data, response } = await air.raw.get('https://x.test/a')
+assert.deepEqual(data, { ok: true }, 'raw still parses the body')
 assert.equal(response.headers.get('x-total'), '7', 'exposes response headers')
+
+// parse: 'stream' hands back the body unread, and it is the response's own body —
+// one stream under two names. Checked here rather than only in the test suite
+// because this runs on the oldest Node `engines` claims, against that version's
+// own fetch implementation.
+stub(() => json({ ok: true }))
+const streamed = await air.raw.get('https://x.test/a', { parse: 'stream' })
+assert.ok(streamed.data instanceof ReadableStream, 'stream mode returns a ReadableStream')
+assert.equal(streamed.data, streamed.response.body, 'the stream is the response body')
+assert.equal(streamed.response.bodyUsed, false, 'the body is handed back unread')
+assert.deepEqual(
+  await new Response(streamed.data).json(),
+  { ok: true },
+  'the stream carries the body',
+)
 
 // An injected fetch replaces the global one, the way a server framework's
 // per-request fetch does

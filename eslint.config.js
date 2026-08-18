@@ -17,6 +17,7 @@ export default defineConfig(
         fetch: 'readonly',
         Request: 'readonly',
         Response: 'readonly',
+        ReadableStream: 'readonly',
         AbortSignal: 'readonly',
         FormData: 'readonly',
         URL: 'readonly',

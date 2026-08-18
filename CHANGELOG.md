@@ -10,6 +10,41 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Added
+
+- **`client.raw` — the parsed body _and_ the response.** Every client now carries a `raw` twin
+  with the same call shape and the same seven methods, resolving to `{ data, response }`:
+
+  ```ts
+  const { data, response } = await api.raw.get<User[]>('/users')
+  response.headers.get('link')
+  ```
+
+  It changes nothing else: same request, same parsing, same options, and `data` is exactly what
+  the plain client would have given you. A non-2xx still throws from both — `error.response` is
+  how you hold a failed response.
+
+- **`parse: 'stream'`** hands back the body unread as a `ReadableStream`, typed, without going
+  through a `Response`.
+
+### Changed
+
+- **Breaking: `parse: 'response'` is gone**, replaced by the two above. It was doing two unrelated
+  jobs — deciding how to read the body and deciding what the call returned — and paid for it: you
+  could have the body or the headers but never both, and `<T>` had to be kept in sync with the
+  option by hand, so `api.get<User>('/u', { parse: 'response' })` compiled and handed you a
+  `Response` typed as a `User`. `parse` now only ever describes the body's shape.
+
+  ```ts
+  // before
+  const response = await api.get<Response>('/users', { parse: 'response' })
+  response.headers.get('link') // and re-parse the body yourself
+
+  // after
+  const { data, response } = await api.raw.get<User[]>('/users')
+  const body = await api.get<ReadableStream>('/download', { parse: 'stream' }) // unread body
+  ```
+
 ## [0.3.1] — 2026-08-11
 
 ### Fixed

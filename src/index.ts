@@ -5,7 +5,9 @@ export { AirError, isAirError } from './error.js'
 export type {
   AirClient,
   AirOptions,
+  AirRawClient,
   AirRequest,
+  AirResponse,
   AirURL,
   Fetch,
   HeaderSource,

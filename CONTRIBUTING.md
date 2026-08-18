@@ -20,7 +20,7 @@ Concretely:
 - **ESM only.** No CJS build, no dual-package `exports` map, no interop shims. The source is ESM and so is everything shipped.
 - **Composition over options.** If a concern can be a standalone function the caller wraps around a request, it is not an option on the request — and if the caller can write that function in a few lines, we do not ship it either. Options are for things that must reach inside the request; everything else stays outside, in userland.
 
-**The counterweight.** "Less is better" can justify any omission, because the cost of what you did not ship is invisible. So the reduction question — _what can we remove?_ — has to be paired with its opposite: **what can a user not do at all?** Both `parse: 'response'` and the escape hatches on `AirError` exist because minimalism had produced a genuine dead end — no way to read response headers on a successful call — and no amount of asking "what can we cut?" would have surfaced it. Ask the second question on every review.
+**The counterweight.** "Less is better" can justify any omission, because the cost of what you did not ship is invisible. So the reduction question — _what can we remove?_ — has to be paired with its opposite: **what can a user not do at all?** Both `client.raw` and the escape hatches on `AirError` exist because minimalism had produced a genuine dead end — no way to read response headers on a successful call — and no amount of asking "what can we cut?" would have surfaced it. Ask the second question on every review.
 
 ### Non-goals
 
@@ -63,11 +63,13 @@ const results = await api.get<Page<User>>('/users', {
 })
 ```
 
-Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
+Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each client also carries
+`raw` — the same callable shape and the same seven methods, resolving to `{ data, response }`
+instead of the body. See The raw client below.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirOptions`, `AirRequest`, `AirURL`, `Fetch`, `HeaderSource`,
-`SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing else.
+types `AirClient`, `AirRawClient`, `AirOptions`, `AirRequest`, `AirResponse`, `AirURL`, `Fetch`,
+`HeaderSource`, `SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing else.
 
 The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
 instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
@@ -82,16 +84,16 @@ second code path for the root export is how the two drift apart.
 
 Keep this list short. Adding to it requires justification.
 
-| Option    | Type                                                        | Notes                                                                        |
-| --------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `baseURL` | `string`                                                    | Joined with the path, no double slashes                                      |
-| `method`  | `string`                                                    | Inferred by the shortcuts, uppercased before sending                         |
-| `query`   | `Query`                                                     | Primitives and arrays of primitives only                                     |
-| `body`    | `unknown`                                                   | Type auto-detected (see below)                                               |
-| `headers` | `HeaderSource`                                              | Merged with client defaults, request wins; may be a function                 |
-| `signal`  | `SignalSource`                                              | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'response'` | Overrides content-type detection                                             |
-| `fetch`   | `Fetch`                                                     | The global `fetch` unless given one; merges like the rest                    |
+| Option    | Type                                                      | Notes                                                                        |
+| --------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `baseURL` | `string`                                                  | Joined with the path, no double slashes                                      |
+| `method`  | `string`                                                  | Inferred by the shortcuts, uppercased before sending                         |
+| `query`   | `Query`                                                   | Primitives and arrays of primitives only                                     |
+| `body`    | `unknown`                                                 | Type auto-detected (see below)                                               |
+| `headers` | `HeaderSource`                                            | Merged with client defaults, request wins; may be a function                 |
+| `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection; the body's shape only, never the return's  |
+| `fetch`   | `Fetch`                                                   | The global `fetch` unless given one; merges like the rest                    |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
 
@@ -265,14 +267,36 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
 
 - Parse based on the response `Content-Type` by default: JSON for `application/json` and `+json`
   suffixes, text for `text/*`, a `Blob` for anything else, including a missing header. `arrayBuffer`
-  is never chosen automatically — it is only reachable through `parse`.
+  and `stream` are never chosen automatically — they are only reachable through `parse`.
 - `204 No Content` and empty bodies resolve to `null`, not a parse error. This holds for every parse
-  mode, including `blob` and `arrayBuffer` — an empty body is never a zero-length value.
-- The `parse` option overrides detection.
-- `parse: 'response'` returns the raw `Response`, before the 204 check, and never reads the body.
-  Without it there is no way to read response headers on a successful call (`Link`, `ETag`, rate
-  limits), which is a real dead end; it costs one union member and replaces a separate `stream`
-  mode, since `response.body` is right there.
+  mode, including `blob` and `arrayBuffer` — an empty body is never a zero-length value. `stream` is
+  the one exception it cannot honour in full: a 204 is still `null`, but an otherwise empty body
+  comes back as whatever `response.body` is, because detecting it would mean consuming the stream
+  the caller asked for.
+- The `parse` option overrides detection. Every mode answers one question — what shape should the
+  body be? — so it never decides what the call resolves to. That is `client.raw`, below.
+
+### The raw client
+
+`client.raw` is the same client resolving to `AirResponse<T>` (`{ data, response }`) instead of the
+body. It exists because a successful call otherwise discards the response entirely: `Link`, `ETag`,
+rate-limit headers, `201` vs `200` and `response.url` after a redirect were unreachable, which is a
+real dead end. Rules:
+
+- It changes nothing about the request or the parsing. `data` is byte-for-byte what the plain client
+  would have resolved to, `parse` included. Anything else is a bug.
+- Consequently the `response` it hands back has `bodyUsed: true` in every mode that reads the body —
+  it is there for headers, status and URL, and re-reading it throws. The exception is
+  `parse: 'stream'`, where `data` **is** `response.body`: one stream, two names, consumed once from
+  either. That pairing (a header describing the stream — `content-length` for progress) is the case
+  `raw` and `stream` exist to serve together, and it must keep working.
+- A separate client, not a `raw: true` option. An option that rewrites the return type has to be
+  read back out with a conditional type over `AirOptions` — the same inference rejected below for
+  `MappedResponseType`, and for the same reason.
+- Non-2xx still throws from both, because the status check runs before parsing. `error.response` is
+  the only way to hold a failed `Response`, and it is enough.
+- Built from the same `request()` as the plain client, which returns both halves and lets each
+  client project one. Two code paths through a request is how they drift.
 
 ### Errors
 

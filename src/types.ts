@@ -1,4 +1,7 @@
-export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'response'
+// Every member answers one question — what shape should the body be? — so the
+// option means exactly one thing. Where the *response* rather than the body is
+// what you need, that is `client.raw`, not a mode here.
+export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream'
 
 export type QueryValue = string | number | boolean | null | undefined
 
@@ -58,6 +61,29 @@ export interface AirRequest {
 // would get from url.toString(), just without having to write that themselves.
 export type AirURL = string | URL
 
+// What a successful call discards once the body is parsed. `data` is the exact
+// value the plain client resolves to — the raw client adds the response, it does
+// not change the parsing.
+export interface AirResponse<T = unknown> {
+  data: T
+  response: Response
+}
+
+// The same seven verbs, resolving to both halves. A separate client rather than
+// a `raw: true` option because an option that rewrites the return type has to be
+// read back out with a conditional type, which is the inference the explicit
+// <T> exists to avoid.
+export interface AirRawClient {
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  get<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  post<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  put<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  patch<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  delete<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  head<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  options<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+}
+
 export interface AirClient {
   <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
   get<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
@@ -67,5 +93,6 @@ export interface AirClient {
   delete<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
   head<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
   options<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  raw: AirRawClient
   create(options?: AirOptions): AirClient
 }

@@ -11,10 +11,15 @@ export async function parseResponse(
   response: Response,
   parse?: ParseMode,
 ): Promise<unknown> {
-  if (parse === 'response') return response
   if (response.status === 204) return null
 
   switch (parse ?? detect(response.headers.get('content-type'))) {
+    // The one mode that hands back the body unread, so it is also the one that
+    // cannot honour "empty body resolves to null" — finding out would mean
+    // consuming the stream the caller asked for. `null` still comes back for a
+    // body-less response, because that is what fetch itself puts there.
+    case 'stream':
+      return response.body
     case 'blob': {
       const blob = await response.blob()
       return blob.size ? blob : null

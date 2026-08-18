@@ -91,11 +91,11 @@ await section('non-2xx throws an AirError', async () => {
   }
 })
 
-await section('parse: "response" — headers on a successful call', async () => {
-  const response = await air.get('https://httpbin.org/response-headers?x-demo=air', {
-    parse: 'response',
-  })
-  console.log('x-demo header:', response.headers.get('x-demo'))
+await section('air.raw — the body and the response on a successful call', async () => {
+  const { data, response } = await air.raw.get(
+    'https://httpbin.org/response-headers?x-demo=air',
+  )
+  console.log('x-demo header:', response.headers.get('x-demo'), '| body:', data)
 })
 
 await section('204 / empty body resolves to null', async () => {
