@@ -423,6 +423,91 @@ describe('parsing', () => {
     )
     await expect(air.get('https://api.test/a')).rejects.toBeInstanceOf(AirError)
   })
+
+  // The regression test for the whole change: the stream never closes, which is the
+  // entire point of SSE. Under the old `text/*` rule this call read to completion and
+  // the promise simply never settled — the test times out rather than fails.
+  it('hands back a streaming content type unread instead of buffering it forever', async () => {
+    mockFetch(
+      () =>
+        new Response(
+          new ReadableStream({
+            start: (controller) =>
+              controller.enqueue(new TextEncoder().encode('data: one\n\n')),
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    )
+
+    const body = await air.get<ReadableStream<Uint8Array>>('https://api.test/events')
+
+    expect(body).toBeInstanceOf(ReadableStream)
+    const reader = body.getReader()
+    const { value } = await reader.read()
+    expect(new TextDecoder().decode(value)).toBe('data: one\n\n')
+    await reader.cancel()
+  })
+
+  it('detects line-delimited JSON as a stream too', async () => {
+    for (const type of ['application/x-ndjson', 'application/jsonl']) {
+      mockFetch(() => new Response('{"a":1}\n', { headers: { 'content-type': type } }))
+      await expect(air.get(`https://api.test/${type}`)).resolves.toBeInstanceOf(
+        ReadableStream,
+      )
+    }
+  })
+
+  it('leaves a charset on a streaming content type alone', async () => {
+    mockFetch(
+      () =>
+        new Response('data: one\n\n', {
+          headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        }),
+    )
+    await expect(air.get('https://api.test/events')).resolves.toBeInstanceOf(
+      ReadableStream,
+    )
+  })
+
+  it('still buffers a streaming content type when parse says so', async () => {
+    mockFetch(
+      () =>
+        new Response('data: one\n\n', {
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+    )
+    await expect(air.get('https://api.test/events', { parse: 'text' })).resolves.toBe(
+      'data: one\n\n',
+    )
+  })
+
+  it('does not treat application/octet-stream as a stream, despite the name', async () => {
+    mockFetch(
+      () =>
+        new Response('x', { headers: { 'content-type': 'application/octet-stream' } }),
+    )
+    await expect(air.get('https://api.test/a')).resolves.toBeInstanceOf(Blob)
+  })
+
+  // Same detection runs on the error path, so the hang was there too: a non-2xx that
+  // never finishes arriving used to hold the rejection open just as long.
+  it('does not hang on a non-2xx with a streaming content type', async () => {
+    mockFetch(
+      () =>
+        new Response(
+          new ReadableStream({
+            start: (controller) =>
+              controller.enqueue(new TextEncoder().encode('data: nope\n\n')),
+          }),
+          { status: 500, headers: { 'content-type': 'text/event-stream' } },
+        ),
+    )
+
+    await expect(air.get('https://api.test/events')).rejects.toMatchObject({
+      name: 'AirError',
+      status: 500,
+    })
+  })
 })
 
 describe('raw', () => {

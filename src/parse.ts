@@ -1,7 +1,15 @@
 import type { ParseMode } from './types.js'
 
+// Every mode but `stream` reads the body to completion, so a content type that is
+// a live stream by definition has to be detected before the general rules — an SSE
+// endpoint stays open, and buffering it means a promise that never settles at all:
+// no status, no error, nothing to log. Keep this list to types that are streams by
+// definition; `application/octet-stream` is not one, despite the name.
+const STREAMING = ['text/event-stream', 'application/x-ndjson', 'application/jsonl']
+
 function detect(contentType: string | null): ParseMode {
   const type = (contentType ?? '').split(';')[0]?.trim() ?? ''
+  if (STREAMING.includes(type)) return 'stream'
   if (type === 'application/json' || type.endsWith('+json')) return 'json'
   if (type.startsWith('text/')) return 'text'
   return 'blob'

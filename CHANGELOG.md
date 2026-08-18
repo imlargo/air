@@ -10,6 +10,34 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A streaming endpoint no longer hangs forever.** Content-type detection sent
+  `text/event-stream` to `text` and `application/x-ndjson` to `blob`, and every parse mode but
+  `stream` reads the body to completion. Against a real SSE or NDJSON endpoint — one that stays
+  open, which is the entire point of both — the promise never settled. Not a failure you could
+  catch: the request had succeeded, the bytes were arriving, and there was no status to inspect,
+  no `AirError`, nothing to log.
+
+  ```ts
+  await api.get('/events') // before: never resolves. now: a ReadableStream.
+  ```
+
+  `text/event-stream`, `application/x-ndjson` and `application/jsonl` are now detected as
+  `stream` and handed back unread. `application/octet-stream` is deliberately not on the list,
+  despite the name — a binary download ends, and it stays a `Blob`.
+
+  Worth knowing if you were pointing `air` at a **finite** response with one of those types —
+  the one case the old behavior actually worked for. It now arrives as a `ReadableStream` rather
+  than a `String` or a `Blob`, and `parse` overrides detection in both directions:
+
+  ```ts
+  const log = await api.get<string>('/events', { parse: 'text' })
+  ```
+
+  This is not a parser and not an `EventSource`: `air` hands back the stream, and reading frames
+  out of it stays in userland.
+
 ## [0.4.0] — 2026-08-17
 
 ### Added

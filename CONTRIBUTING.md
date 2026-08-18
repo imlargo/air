@@ -267,7 +267,21 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
 
 - Parse based on the response `Content-Type` by default: JSON for `application/json` and `+json`
   suffixes, text for `text/*`, a `Blob` for anything else, including a missing header. `arrayBuffer`
-  and `stream` are never chosen automatically — they are only reachable through `parse`.
+  is never chosen automatically — it is only reachable through `parse`.
+- `stream` **is** chosen automatically, for the content types that are streams by definition:
+  `text/event-stream`, `application/x-ndjson` and `application/jsonl`. Every other mode reads the
+  body to completion, so against a real SSE endpoint — one that stays open, which is the entire
+  point — the default used to produce a promise that never settled. Not a failure with a status to
+  inspect or an `AirError` to log: the request succeeded, the bytes were arriving, and the call
+  simply hung. The check runs **before** the `text/*` prefix rule, since `text/event-stream` is the
+  one member of `text/*` that is not a document.
+- That list is something we now maintain, which is the cost of the fix. Keep it to types that are
+  streams by definition. `application/octet-stream` is not one, despite the name — a large binary
+  download still ends, and buffering it is what `Blob` is for. Adding a type here is a breaking
+  change for anyone parsing it today, so it needs the same bar as any other default.
+- Detection is the same on the error path, so `error.data` for a non-2xx carrying one of these
+  types is the unread stream. That is deliberate: one rule everywhere, and the alternative is the
+  hang above, on a request that had already failed.
 - `204 No Content` and empty bodies resolve to `null`, not a parse error. This holds for every parse
   mode, including `blob` and `arrayBuffer` — an empty body is never a zero-length value. `stream` is
   the one exception it cannot honour in full: a 204 is still `null`, but an otherwise empty body

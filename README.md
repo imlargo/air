@@ -332,12 +332,30 @@ to stream a request at all. Pass your own `duplex` to override it.
 Parsed from the response `Content-Type`: JSON for `application/json` and `+json` suffixes,
 text for `text/*`, a `Blob` otherwise. `204` and empty bodies resolve to `null`.
 
+Three content types are handed back **unread**, as a `ReadableStream`, because they are
+streams by definition and reading one to completion means waiting for an endpoint that is
+designed never to close:
+
+| Content type                                | Resolves to      |
+| ------------------------------------------- | ---------------- |
+| `text/event-stream` (server-sent events)    | `ReadableStream` |
+| `application/x-ndjson`, `application/jsonl` | `ReadableStream` |
+
+`application/octet-stream` is **not** one of them, despite the name — it is a `Blob` like
+any other binary payload.
+
 `parse` overrides the detection — `'json'`, `'text'`, `'blob'`, `'arrayBuffer'`, or
 `'stream'` for the body unread as a `ReadableStream`:
 
 ```ts
 const csv = await api.get<string>('/export', { parse: 'text' })
 const body = await api.get<ReadableStream>('/download', { parse: 'stream' })
+```
+
+It overrides in both directions, so a finite SSE response can still be buffered:
+
+```ts
+const log = await api.get<string>('/events', { parse: 'text' })
 ```
 
 ### Raw
