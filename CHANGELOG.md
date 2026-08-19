@@ -2,13 +2,22 @@
 
 Notable changes to `@korastd/air`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
-[semantic versioning](https://semver.org/spec/v2.0.0.html) — while the major is `0`, a minor
-bump is where a breaking change would go.
+[semantic versioning](https://semver.org/spec/v2.0.0.html). Since 1.0.0 a breaking change
+means a major bump; before it, while the major was `0`, a minor bump carried them.
 
 Entries say what changed for someone _using_ the library. A refactor nobody can observe from
 the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-08-19
+
+The API is stable from here: no breaking change without a 2.0. What that covers is the export
+list in [CONTRIBUTING.md](./CONTRIBUTING.md) — `air`, `create`, `AirError`, `isAirError` and
+the exported types — plus the behaviour the README documents. `engines` moving forward as Node
+versions reach end of life is not a breaking change, and neither is a new optional field.
+
+Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
 ### Added
 
@@ -298,7 +307,8 @@ dependencies.
 No timeout or retry options, by design — `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/imlargo/air/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/imlargo/air/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/imlargo/air/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/imlargo/air/compare/v0.3.1...v0.4.0

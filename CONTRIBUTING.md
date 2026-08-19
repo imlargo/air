@@ -635,8 +635,13 @@ To cut a release: move the `Unreleased` entries in `CHANGELOG.md` under a new he
 version, bump `version` in `package.json`, commit, then
 
 ```bash
-git tag v0.1.1 && git push origin v0.1.1
+git tag v1.0.1 && git push origin v1.0.1
 ```
+
+Since 1.0.0 the version is a promise, not a counter. A breaking change to the export list or to
+documented behaviour is a major bump, and the bar for making one is that the alternative is a
+dead end rather than an inconvenience. Raising `engines` as a Node version reaches end of life
+is not breaking, and neither is a new optional field.
 
 `release.yml` refuses to publish a tag that `CHANGELOG.md` has no section for, the same way it
 refuses one that disagrees with `package.json`. Both checks exist because the failure they
