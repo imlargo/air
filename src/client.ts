@@ -4,6 +4,7 @@ import { parseResponse } from './parse.js'
 import { buildURL, toQueryRecord } from './url.js'
 import type {
   AirClient,
+  AirOptions,
   AnyOptions,
   AirRequest,
   AirResponse,
@@ -200,7 +201,7 @@ function verbs<M>(make: (method: string) => M) {
   }
 }
 
-export function create(defaults: AnyOptions = {}): AirClient {
+export function create(defaults: AirOptions = {}): AirClient {
   const settle = (options?: AnyOptions, method?: string): AnyOptions =>
     method ? { ...merge(defaults, options), method } : merge(defaults, options)
 
@@ -224,6 +225,9 @@ export function create(defaults: AnyOptions = {}): AirClient {
 
   return Object.assign(call, verbs(shortcut), {
     raw: Object.assign(rawCall, verbs(rawShortcut)),
-    create: (options?: AnyOptions): AirClient => create(merge(defaults, options)),
+    // Both sides are AirOptions here, so the merge is one too. merge() is typed for the
+    // looser case it also has to serve: a per-request `parse: 'stream'`.
+    create: (options?: AirOptions): AirClient =>
+      create(merge(defaults, options) as AirOptions),
   })
 }

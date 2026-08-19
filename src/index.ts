@@ -9,13 +9,13 @@ export type {
   AirRequest,
   AirResponse,
   AirURL,
-  AnyOptions,
   Fetch,
   HeaderSource,
   Query,
   QueryValue,
   ParseMode,
   SignalSource,
+  StreamOptions,
 } from './types.js'
 
 export const air = create()

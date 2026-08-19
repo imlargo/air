@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import air, { AirError, create, isAirError } from '../src/index.js'
-import type { AnyOptions, Fetch } from '../src/index.js'
+import type { AirOptions, Fetch, StreamOptions } from '../src/index.js'
 import { json, mockFetch, stall } from './mock.js'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -513,10 +513,10 @@ describe('parsing', () => {
     })
   })
 
-  // The options on a thrown error have to be nameable and assignable by a caller, or the
-  // narrowed AirOptions turns a public field into a type you can read and never hold. This
-  // was broken once, between narrowing AirOptions and exporting AnyOptions.
-  it('hands back error options a caller can still name', async () => {
+  // The options on a thrown error have to be nameable and assignable by a caller using
+  // exported types only, or the narrowed AirOptions turns a public field into something you
+  // can read and never hold. This was broken once, when AirOptions was first narrowed.
+  it('hands back error options a caller can name with public types', async () => {
     mockFetch(() => json({}, { status: 500 }))
     const error = await air
       .get('https://api.test/a', { parse: 'text' })
@@ -524,8 +524,18 @@ describe('parsing', () => {
 
     expect(isAirError(error)).toBe(true)
     if (!isAirError(error)) return
-    const options: AnyOptions = error.request.options
+    const options: AirOptions | StreamOptions = error.request.options
     expect(options.parse).toBe('text')
+  })
+
+  // A client-level `parse: 'stream'` would put the option out of reach of the call site's
+  // signature, which is the one place the rule above could not hold. Rather than document
+  // that hole, create() does not accept it.
+  it('refuses a streaming default on a client', () => {
+    // @ts-expect-error a stream is a per-call shape, not a client-wide one
+    air.create({ parse: 'stream' })
+    // @ts-expect-error same on the exported factory
+    create({ parse: 'stream' })
   })
 
   it('still catches a mistyped parse mode', async () => {

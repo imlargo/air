@@ -85,18 +85,14 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'sign
 }
 
 // The options a streaming call takes: everything else, with `parse` required and fixed.
-// Deliberately not re-exported from index.ts, like HeaderInit — callers write the literal.
+// Public, because `AirRequest.options` is one of these or an `AirOptions`, and a caller
+// holding `error.request.options` has to be able to name what they are holding.
 export type StreamOptions = Omit<AirOptions, 'parse'> & { parse: 'stream' }
 
-// Both shapes as one: what air actually accepts, streaming included. Used by the
-// implementation, by `create` — which has no return body to get wrong and so has no reason
-// to refuse a streaming default — and by `AirRequest.options`.
-//
-// Exported, unlike StreamOptions, because it is the declared type of a public field. A type
-// a caller can read off `error.request.options` but cannot name or assign is exactly the
-// dead end the counterweight rule exists to catch, and it was one until a consumer-level
-// type test found it.
-export type AnyOptions = Omit<AirOptions, 'parse'> & { parse?: ParseMode }
+// Either shape, for the implementation only: request() takes both. Never re-exported —
+// the union is spelled out where a caller actually meets it, on AirRequest, so reading an
+// error never requires learning a third options type.
+export type AnyOptions = AirOptions | StreamOptions
 
 export interface AirRequest {
   url: string
@@ -104,7 +100,7 @@ export interface AirRequest {
   // The headers as actually sent, already resolved and with any Content-Type the
   // body added. `options.headers` may still be an unevaluated function.
   headers: Headers
-  options: AnyOptions
+  options: AirOptions | StreamOptions
 }
 
 // A URL is already absolute, so it needs no baseURL — the same string a caller
@@ -157,5 +153,5 @@ export interface AirClient extends Call {
   head: Call
   options: Call
   raw: AirRawClient
-  create(options?: AnyOptions): AirClient
+  create(options?: AirOptions): AirClient
 }
