@@ -92,16 +92,16 @@ second code path for the root export is how the two drift apart.
 
 Keep this list short. Adding to it requires justification.
 
-| Option    | Type                                                      | Notes                                                                        |
-| --------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `baseURL` | `string \| URL`                                           | Joined with the path, no double slashes                                      |
-| `method`  | `string`                                                  | Inferred by the shortcuts, uppercased before sending                         |
-| `query`   | `Query`                                                   | A record, a `URLSearchParams`, or tuples; primitive values only              |
-| `body`    | `unknown`                                                 | Type auto-detected (see below)                                               |
-| `headers` | `HeaderSource`                                            | Merged with client defaults, request wins; `null` removes; may be a function |
-| `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection; `'stream'` takes no `<T>` (see below)      |
-| `fetch`   | `Fetch`                                                   | The global `fetch` unless given one; merges like the rest                    |
+| Option    | Type                                          | Notes                                                                        |
+| --------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
+| `baseURL` | `string \| URL`                               | Joined with the path, no double slashes                                      |
+| `method`  | `string`                                      | Inferred by the shortcuts, uppercased before sending                         |
+| `query`   | `Query`                                       | A record, a `URLSearchParams`, or tuples; primitive values only              |
+| `body`    | `unknown`                                     | Type auto-detected (see below)                                               |
+| `headers` | `HeaderSource`                                | Merged with client defaults, request wins; `null` removes; may be a function |
+| `signal`  | `SignalSource`                                | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer'` | Overrides detection. `'stream'` is its own shape and takes no `<T>`; below   |
+| `fetch`   | `Fetch`                                       | The global `fetch` unless given one; merges like the rest                    |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
 
@@ -348,10 +348,14 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
 - The interface pair `Call`/`RawCall` is declared once and reused by the callable form and all
   seven verbs, for the same reason `verbs()` exists in `client.ts`: a signature that lives in one
   place cannot be added to one client and forgotten in the other.
-- `AnyOptions` (both shapes as one) is what the implementation and `create` use. `create` has no
-  return body to get wrong, so it accepts a streaming default; the lie that remains — a
-  client-level `parse: 'stream'` plus a `<T>` at the call site — is out of reach of any signature
-  and is documented in the README rather than pretended away.
+- `AnyOptions` (both shapes as one) is the implementation's type and is never exported.
+- **`create` does not accept `parse: 'stream'`**, and that is the point rather than an
+  oversight. A client default sits out of reach of the call site's signature, so
+  `create({ parse: 'stream' }).get<User>('/x')` would compile and lie — the one hole the
+  overload cannot close. Rejecting it deletes the lie instead of documenting it, and costs
+  nothing real: a client sends requests to many endpoints, and "every response here is an
+  unread stream" is not a thing to mean. There is a `@ts-expect-error` test on both `create`
+  and `air.create`.
 
 ### The raw client
 

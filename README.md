@@ -54,16 +54,16 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 
 ## Options
 
-| Option    | Type                                                      | Notes                                   |
-| --------- | --------------------------------------------------------- | --------------------------------------- |
-| `baseURL` | `string \| URL`                                           | Joined with the path, no double slashes |
-| `method`  | `string`                                                  | Inferred by the shortcuts               |
-| `query`   | `Query`                                                   | Record, `URLSearchParams`, or tuples    |
-| `body`    | `unknown`                                                 | Type auto-detected                      |
-| `headers` | `HeaderSource`                                            | Merged with defaults; `null` removes    |
-| `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched          |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection        |
-| `fetch`   | `Fetch`                                                   | Defaults to the global `fetch`          |
+| Option    | Type                                          | Notes                                   |
+| --------- | --------------------------------------------- | --------------------------------------- |
+| `baseURL` | `string \| URL`                               | Joined with the path, no double slashes |
+| `method`  | `string`                                      | Inferred by the shortcuts               |
+| `query`   | `Query`                                       | Record, `URLSearchParams`, or tuples    |
+| `body`    | `unknown`                                     | Type auto-detected                      |
+| `headers` | `HeaderSource`                                | Merged with defaults; `null` removes    |
+| `signal`  | `SignalSource`                                | Forwarded to `fetch` untouched          |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer'` | Overrides detection; `'stream'` below   |
+| `fetch`   | `Fetch`                                       | Defaults to the global `fetch`          |
 
 Anything else is forwarded to the underlying `fetch` call.
 
