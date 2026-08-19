@@ -10,6 +10,45 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Added
+
+- **`examples/` — every recipe in the README, runnable and asserted.** Seven files that start
+  a local server, exercise the built package over real `fetch`, and check what they claim:
+  SSR with an injected `fetch`, refreshing a token on a 401, retry with `Retry-After`,
+  download and upload progress, server-sent events, faking the transport in tests, and the
+  platform behaviours a mock cannot model. `pnpm examples` runs them; CI runs them on every
+  supported Node.
+
+  Not documentation polish — it is the gap all three shipped bugs came through. `duplex` in
+  0.2.0, the shared signal in 0.3.1 and the stringified `null` header in 0.5.0 each survived a
+  green test run, because the suite mocks `fetch` and a mock agrees with whatever its author
+  assumed. All three are now pinned against a real socket.
+
+### Changed
+
+- **`StreamOptions` replaces `AnyOptions` in the export list.** 0.5.0 exported `AnyOptions`
+  because narrowing `AirOptions` had left `error.request.options` unnameable, and it was the
+  fastest way to close that. The name did not explain itself, and a third options type is one
+  more thing to learn for no gain. `AirRequest.options` is now `AirOptions | StreamOptions`,
+  written out, and `StreamOptions` — the streaming shape, `parse` required — is exported in its
+  place. It is also useful on its own, for building the options as a value:
+
+  ```ts
+  import type { StreamOptions } from '@korastd/air'
+
+  const download: StreamOptions = { parse: 'stream' }
+  await api.get('/big.zip', download)
+  ```
+
+  If you referenced `AnyOptions`, write `AirOptions | StreamOptions`; it is the same type.
+
+- **`parse: 'stream'` is no longer accepted as a client default.**
+  `air.create({ parse: 'stream' })` is a compile error. It was the one case where the option sat
+  out of reach of the call site's signature, so `create({ parse: 'stream' }).get<User>('/x')`
+  compiled and lied — the last documented hole in `parse`, now closed rather than described. A
+  client sends requests to many endpoints, and "every response here is an unread stream" is not
+  a thing to mean; pass it per call.
+
 ## [0.5.0] — 2026-08-19
 
 ### Added

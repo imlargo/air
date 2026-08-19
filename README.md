@@ -393,12 +393,17 @@ whose type is already known — writing `api.get<User>('/download', { parse: 'st
 compile error rather than a `ReadableStream` wearing a `User`'s name. Every other mode still
 takes the `<T>` you assert, since only you know what the endpoint returns.
 
-The one thing this cannot catch is a client-level default, where the option is nowhere near
-the call site:
+For the same reason, `parse: 'stream'` is a per-call shape and not a client default —
+`air.create({ parse: 'stream' })` is a compile error. A client sends requests to many
+endpoints; "every response on this client is an unread stream" is not a thing to mean.
+
+To build the options as a value rather than a literal, the type is exported:
 
 ```ts
-const downloads = air.create({ parse: 'stream' })
-await downloads.get<User>('/x') // compiles, and is still a lie
+import type { StreamOptions } from '@korastd/air'
+
+const download: StreamOptions = { parse: 'stream' }
+const body = await api.get('/big.zip', download)
 ```
 
 It overrides in both directions, so a finite SSE response can still be buffered:
@@ -486,11 +491,33 @@ air.get('/users') // Promise<unknown> — never `any`
 air.raw.get<User[]>('/users') // Promise<AirResponse<User[]>> — { data, response }
 ```
 
+## Examples
+
+Every recipe above exists as a runnable file in [`examples/`](./examples). They start a local
+server, make real requests against the built package, and assert what they claim — so they are
+also the integration lane CI runs on every supported Node, and none of them can quietly rot.
+
+| File                                      | What it shows                                                           |
+| ----------------------------------------- | ----------------------------------------------------------------------- |
+| [`ssr.mjs`](./examples/ssr.mjs)           | A per-request `fetch` from a framework, carrying its own cookies        |
+| [`refresh.mjs`](./examples/refresh.mjs)   | Refreshing a token on a 401, single-flighted across concurrent requests |
+| [`retry.mjs`](./examples/retry.mjs)       | Retry that honours `Retry-After` and never retries a cancellation       |
+| [`progress.mjs`](./examples/progress.mjs) | Download and upload progress                                            |
+| [`sse.mjs`](./examples/sse.mjs)           | Server-sent events — and when to use `EventSource` instead              |
+| [`testing.mjs`](./examples/testing.mjs)   | Faking the transport, without a global stub                             |
+| [`platform.mjs`](./examples/platform.mjs) | The behaviours only a real socket can confirm                           |
+
+```bash
+pnpm examples   # build, then run them all
+node examples/retry.mjs
+```
+
 ## Development
 
 ```bash
 pnpm build      # tsdown → dist/ (ESM + .d.ts)
 pnpm test       # vitest run
+pnpm examples   # build, then run examples/ against a local server
 pnpm lint       # eslint . --max-warnings 0
 pnpm format     # prettier --write .
 pnpm demo       # build, then run examples/demo.mjs against real endpoints

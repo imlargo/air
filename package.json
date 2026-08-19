@@ -40,6 +40,7 @@
     "dev": "tsdown --watch",
     "test": "vitest run",
     "smoke": "pnpm build && node scripts/smoke.mjs",
+    "examples": "pnpm build && node scripts/examples.mjs",
     "demo": "pnpm build && node examples/demo.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

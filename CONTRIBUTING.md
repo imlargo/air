@@ -68,16 +68,16 @@ Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each client
 instead of the body. See The raw client below.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirRawClient`, `AirOptions`, `AnyOptions`, `AirRequest`, `AirResponse`,
-`AirURL`, `Fetch`, `HeaderSource`, `SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing
+types `AirClient`, `AirRawClient`, `AirOptions`, `AirRequest`, `AirResponse`, `AirURL`, `Fetch`,
+`HeaderSource`, `SignalSource`, `Query`, `QueryValue`, `ParseMode`, `StreamOptions`. Nothing
 else.
 
-`AnyOptions` is the one that needs explaining: `AirOptions` is what you write at a call site and
-excludes `parse: 'stream'`, while `AnyOptions` is both shapes at once — what `create` accepts and
-what `AirRequest.options` is. It is exported only because it types a public field; a type a
-caller can read off `error.request.options` and then neither name nor assign is a dead end, and
-it was one for a while. `StreamOptions` stays unexported, like `HeaderInit`: callers write the
-literal.
+Two options types, and the split is load-bearing: `AirOptions` is what you write at a call site
+and excludes `parse: 'stream'`; `StreamOptions` is the streaming shape, with `parse` required.
+`AirRequest.options` is `AirOptions | StreamOptions`, written out rather than hidden behind a
+third alias — a caller holding `error.request.options` must be able to name it with exported
+types, and for one release could not. The internal `AnyOptions` is that same union and is never
+exported; `HeaderInit` is likewise internal.
 
 The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
 instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
@@ -474,8 +474,21 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   `dist/`, not `src/`, so a broken build — bad bundling, a dropped export — fails there even with a
   fully green test run. It is plain Node with no test runner and no syntax past Node 20, because CI
   also runs it on the oldest version `engines` claims. Keep both of those properties if you edit it.
-- `examples/demo.mjs` makes real network requests and is not part of `pnpm test` — run it by hand
-  (`pnpm demo`) to sanity-check the library against the real thing, not against mocks.
+- **`examples/` is the integration lane, and it is not optional.** Each file starts a local
+  HTTP server, exercises the built `dist/` over real `fetch`, and asserts what it demonstrates.
+  `pnpm examples` runs them all; CI runs them on every Node in the compat matrix. They exist
+  because all three bugs this library has shipped — `duplex` in 0.2.0, the shared signal in
+  0.3.1, the stringified `null` header in 0.5.0 — got through a green vitest run, and every one
+  of them is now pinned in `examples/platform.mjs`.
+- A file there is a recipe _and_ a test, in that order. Keep the server setup above a
+  `--- the recipe ---` marker so the part a reader copies is obvious, and keep the assertions
+  below a `--- what it proves ---` one. If a recipe cannot be asserted, it is not understood
+  well enough to publish.
+- `examples/_server.mjs` is the shared harness, not an example, and `scripts/examples.mjs`
+  skips anything starting with `_`.
+- `examples/demo.mjs` is the odd one out: it makes real network requests to third parties, so
+  it cannot gate a build and the runner skips it. Run it by hand (`pnpm demo`) to check the
+  library against the actual internet — TLS, redirects, a server nobody here wrote.
 
 ---
 
