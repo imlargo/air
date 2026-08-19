@@ -10,6 +10,8 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-19
+
 ### Added
 
 - **`null` removes an inherited header.** Every option could already be opted out of per
@@ -45,6 +47,10 @@ the outside does not get a line here; the git history already has it.
 
 - **`baseURL` accepts a `URL`**, matching the request target, which has taken one since 0.1.0.
 
+- **`AnyOptions` is exported**, the type of `error.request.options` and of what `create`
+  accepts: both option shapes at once, `parse: 'stream'` included. `AirOptions` is still the one
+  you write at a call site.
+
 ### Fixed
 
 - **`parse: 'stream'` no longer accepts a type argument that contradicts it.** This compiled,
@@ -71,10 +77,6 @@ the outside does not get a line here; the git history already has it.
   One case no signature can reach, now documented: a client-level
   `air.create({ parse: 'stream' })` puts the option nowhere near the call site, so `<T>` there
   still lies.
-
-- **`AnyOptions` is exported**, the type of `error.request.options` and of what `create`
-  accepts: both option shapes at once, `parse: 'stream'` included. `AirOptions` is still the one
-  you write at a call site.
 
 ### Changed
 
@@ -257,7 +259,8 @@ dependencies.
 No timeout or retry options, by design — `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/imlargo/air/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/imlargo/air/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/imlargo/air/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/imlargo/air/compare/v0.3.0...v0.3.1
