@@ -68,8 +68,16 @@ Methods: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each client
 instead of the body. See The raw client below.
 
 The whole export list is `air` (default and named), `create`, `AirError`, `isAirError`, and the
-types `AirClient`, `AirRawClient`, `AirOptions`, `AirRequest`, `AirResponse`, `AirURL`, `Fetch`,
-`HeaderSource`, `SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing else.
+types `AirClient`, `AirRawClient`, `AirOptions`, `AnyOptions`, `AirRequest`, `AirResponse`,
+`AirURL`, `Fetch`, `HeaderSource`, `SignalSource`, `Query`, `QueryValue`, `ParseMode`. Nothing
+else.
+
+`AnyOptions` is the one that needs explaining: `AirOptions` is what you write at a call site and
+excludes `parse: 'stream'`, while `AnyOptions` is both shapes at once — what `create` accepts and
+what `AirRequest.options` is. It is exported only because it types a public field; a type a
+caller can read off `error.request.options` and then neither name nor assign is a dead end, and
+it was one for a while. `StreamOptions` stays unexported, like `HeaderInit`: callers write the
+literal.
 
 The request target (`url` in every signature above) is `AirURL` — `string | URL`. A `URL`
 instance is already absolute, so it behaves exactly like an absolute string: `baseURL` is
@@ -92,7 +100,7 @@ Keep this list short. Adding to it requires justification.
 | `body`    | `unknown`                                                 | Type auto-detected (see below)                                               |
 | `headers` | `HeaderSource`                                            | Merged with client defaults, request wins; `null` removes; may be a function |
 | `signal`  | `SignalSource`                                            | Forwarded to `fetch` untouched — never wrapped or bridged; may be a function |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection; the body's shape only, never the return's  |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer' \| 'stream'` | Overrides content-type detection; `'stream'` takes no `<T>` (see below)      |
 | `fetch`   | `Fetch`                                                   | The global `fetch` unless given one; merges like the rest                    |
 
 Anything not recognized is forwarded to the underlying `fetch` call.
@@ -318,6 +326,32 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
   the caller asked for.
 - The `parse` option overrides detection. Every mode answers one question — what shape should the
   body be? — so it never decides what the call resolves to. That is `client.raw`, below.
+- **`parse: 'stream'` takes no type argument.** `AirOptions.parse` is `Exclude<ParseMode,
+'stream'>`, and `'stream'` is reachable only through an overload that has no `<T>` to
+  contradict. Every other mode's type is the caller's assertion, because only they know what the
+  endpoint returns; `'stream'` is the one whose answer air already knows, so letting a caller
+  assert over it was the compiler endorsing a wrong answer —
+  `api.get<User>('/u', { parse: 'stream' })` used to compile and hand back a `ReadableStream`
+  typed as a `User`, the exact hole 0.4.0 closed for `parse: 'response'` and reopened here.
+- Note what that is **not**: not `MappedResponseType`. Nothing is inferred and no mode's type is
+  computed from a conditional over the options — one mode is declared where a generic cannot
+  reach it. The rule states in a sentence, which is the "predictable over clever" bar the
+  conditional-type design failed.
+- Three designs were compiled against TypeScript 6 before this one, and two of them do not work.
+  A plain overload pair whose generic signature still accepts `AirOptions` does **not** close the
+  hole, and neither does constraining `T extends ReadableStream` on the stream overload: an
+  explicit `<T>` makes TypeScript discard every overload without type parameters and fall through
+  to the generic one. Narrowing the generic overload's `parse` instead does close it, but rejects
+  a prebuilt `AirOptions` variable. Excluding `'stream'` from `AirOptions.parse` is the only one
+  of the four that closes the hole while leaving every legitimate call compiling. Do not
+  "simplify" this back into a plain overload pair without re-running that check.
+- The interface pair `Call`/`RawCall` is declared once and reused by the callable form and all
+  seven verbs, for the same reason `verbs()` exists in `client.ts`: a signature that lives in one
+  place cannot be added to one client and forgotten in the other.
+- `AnyOptions` (both shapes as one) is what the implementation and `create` use. `create` has no
+  return body to get wrong, so it accepts a streaming default; the lie that remains — a
+  client-level `parse: 'stream'` plus a `<T>` at the call site — is out of reach of any signature
+  and is documented in the README rather than pretended away.
 
 ### The raw client
 

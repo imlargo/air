@@ -1,6 +1,13 @@
 // Every member answers one question — what shape should the body be? — so the
 // option means exactly one thing. Where the *response* rather than the body is
 // what you need, that is `client.raw`, not a mode here.
+//
+// `stream` is the one member whose type is fixed and known at compile time, so it is
+// the one that must not be paired with a caller's `<T>`. `AirOptions.parse` therefore
+// excludes it, and it is reachable only through the overload below, which has no type
+// parameter to disagree with. This is not the rejected `MappedResponseType`: nothing is
+// inferred and no mode's type is computed from a conditional — one mode is simply
+// declared where a generic cannot reach it.
 export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream'
 
 export type QueryValue = string | number | boolean | null | undefined
@@ -60,7 +67,7 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'sign
   query?: Query
   body?: unknown
   headers?: HeaderSource
-  parse?: ParseMode
+  parse?: Exclude<ParseMode, 'stream'>
   // Still forwarded to fetch untouched — never wrapped, never composed with
   // another signal. The function form only decides *which* signal that is.
   signal?: SignalSource | null
@@ -77,13 +84,27 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'sign
   duplex?: 'half'
 }
 
+// The options a streaming call takes: everything else, with `parse` required and fixed.
+// Deliberately not re-exported from index.ts, like HeaderInit — callers write the literal.
+export type StreamOptions = Omit<AirOptions, 'parse'> & { parse: 'stream' }
+
+// Both shapes as one: what air actually accepts, streaming included. Used by the
+// implementation, by `create` — which has no return body to get wrong and so has no reason
+// to refuse a streaming default — and by `AirRequest.options`.
+//
+// Exported, unlike StreamOptions, because it is the declared type of a public field. A type
+// a caller can read off `error.request.options` but cannot name or assign is exactly the
+// dead end the counterweight rule exists to catch, and it was one until a consumer-level
+// type test found it.
+export type AnyOptions = Omit<AirOptions, 'parse'> & { parse?: ParseMode }
+
 export interface AirRequest {
   url: string
   method: string
   // The headers as actually sent, already resolved and with any Content-Type the
   // body added. `options.headers` may still be an unevaluated function.
   headers: Headers
-  options: AirOptions
+  options: AnyOptions
 }
 
 // A URL is already absolute, so it needs no baseURL — the same string a caller
@@ -98,30 +119,43 @@ export interface AirResponse<T = unknown> {
   response: Response
 }
 
+// Declared once and reused by the callable form and all seven verbs, so a signature can
+// never be added to one and forgotten in another — the same reason `verbs()` exists in
+// client.ts. The stream overload comes first because overload resolution takes the first
+// match, and it carries no <T>: with `parse: 'stream'` the body's type is known, so there
+// is nothing for a caller to assert and nothing to assert wrongly.
+interface Call {
+  (url: AirURL, options: StreamOptions): Promise<ReadableStream<Uint8Array>>
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+}
+
+interface RawCall {
+  (url: AirURL, options: StreamOptions): Promise<AirResponse<ReadableStream<Uint8Array>>>
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+}
+
 // The same seven verbs, resolving to both halves. A separate client rather than
 // a `raw: true` option because an option that rewrites the return type has to be
 // read back out with a conditional type, which is the inference the explicit
 // <T> exists to avoid.
-export interface AirRawClient {
-  <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  get<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  post<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  put<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  patch<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  delete<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  head<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
-  options<T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+export interface AirRawClient extends RawCall {
+  get: RawCall
+  post: RawCall
+  put: RawCall
+  patch: RawCall
+  delete: RawCall
+  head: RawCall
+  options: RawCall
 }
 
-export interface AirClient {
-  <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  get<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  post<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  put<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  patch<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  delete<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  head<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
-  options<T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+export interface AirClient extends Call {
+  get: Call
+  post: Call
+  put: Call
+  patch: Call
+  delete: Call
+  head: Call
+  options: Call
   raw: AirRawClient
-  create(options?: AirOptions): AirClient
+  create(options?: AnyOptions): AirClient
 }

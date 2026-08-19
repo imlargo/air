@@ -45,6 +45,37 @@ the outside does not get a line here; the git history already has it.
 
 - **`baseURL` accepts a `URL`**, matching the request target, which has taken one since 0.1.0.
 
+### Fixed
+
+- **`parse: 'stream'` no longer accepts a type argument that contradicts it.** This compiled,
+  and handed back a `ReadableStream` wearing a `User`'s name:
+
+  ```ts
+  const user = await api.get<User>('/u', { parse: 'stream' }) // now a compile error
+  user.id // ...which used to typecheck, on a ReadableStream
+  ```
+
+  It is the same hole 0.4.0 closed by removing `parse: 'response'`, reopened by its
+  replacement, and the one defect that could corrupt a program rather than annoy a developer.
+  `'stream'` is the one mode whose type air already knows, so it is the one where a caller has
+  nothing to assert:
+
+  ```ts
+  const body = await api.get('/download', { parse: 'stream' }) // ReadableStream<Uint8Array>
+  ```
+
+  Every other mode is unchanged and still takes the `<T>` you assert, since only you know what
+  the endpoint returns. A mistyped mode (`parse: 'respons'`) is still caught. If you were
+  writing the redundant generic, drop it — that is the only source change this needs.
+
+  One case no signature can reach, now documented: a client-level
+  `air.create({ parse: 'stream' })` puts the option nowhere near the call site, so `<T>` there
+  still lies.
+
+- **`AnyOptions` is exported**, the type of `error.request.options` and of what `create`
+  accepts: both option shapes at once, `parse: 'stream'` included. `AirOptions` is still the one
+  you write at a call site.
+
 ### Changed
 
 - **`engines.node` is now `>=20`**, up from `>=18`. The README told users to compose signals

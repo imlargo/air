@@ -385,7 +385,20 @@ any other binary payload.
 
 ```ts
 const csv = await api.get<string>('/export', { parse: 'text' })
-const body = await api.get<ReadableStream>('/download', { parse: 'stream' })
+const body = await api.get('/download', { parse: 'stream' }) // ReadableStream<Uint8Array>
+```
+
+`parse: 'stream'` is the one mode that takes **no** type argument, because it is the one
+whose type is already known — writing `api.get<User>('/download', { parse: 'stream' })` is a
+compile error rather than a `ReadableStream` wearing a `User`'s name. Every other mode still
+takes the `<T>` you assert, since only you know what the endpoint returns.
+
+The one thing this cannot catch is a client-level default, where the option is nowhere near
+the call site:
+
+```ts
+const downloads = air.create({ parse: 'stream' })
+await downloads.get<User>('/x') // compiles, and is still a lie
 ```
 
 It overrides in both directions, so a finite SSE response can still be buffered:
@@ -421,9 +434,7 @@ stream under two names, not two copies. Reading either one consumes the other. P
 is the point: the header tells you how to read the stream.
 
 ```ts
-const { data, response } = await api.raw.get<ReadableStream>('/big.zip', {
-  parse: 'stream',
-})
+const { data, response } = await api.raw.get('/big.zip', { parse: 'stream' })
 
 const total = Number(response.headers.get('content-length'))
 const reader = data.getReader()

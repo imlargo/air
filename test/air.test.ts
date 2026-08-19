@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import air, { AirError, create, isAirError } from '../src/index.js'
-import type { Fetch } from '../src/index.js'
+import type { AnyOptions, Fetch } from '../src/index.js'
 import { json, mockFetch, stall } from './mock.js'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -487,10 +487,51 @@ describe('parsing', () => {
   it('hands back the body unread as a stream', async () => {
     mockFetch(() => json({ id: 1 }))
 
-    const body = await air.get<ReadableStream>('https://api.test/a', { parse: 'stream' })
+    const body = await air.get('https://api.test/a', { parse: 'stream' })
 
     expect(body).toBeInstanceOf(ReadableStream)
     await expect(new Response(body).json()).resolves.toEqual({ id: 1 })
+  })
+
+  // The rule this pins is a type-level one, so the assertions are the @ts-expect-error
+  // comments: a mode whose type is known must not accept a caller's contradicting <T>.
+  // `pnpm typecheck` covers test/, so loosening AirOptions fails the build here.
+  it('refuses a generic that contradicts the stream mode', async () => {
+    mockFetch(() => json({ id: 1 }))
+
+    const body = await air.get('https://api.test/a', { parse: 'stream' })
+    const stream: ReadableStream<Uint8Array> = body
+    expect(stream).toBeInstanceOf(ReadableStream)
+
+    await air.get<{ id: number }>('https://api.test/a', {
+      // @ts-expect-error a stream is not a User, and `parse: 'stream'` says so
+      parse: 'stream',
+    })
+    await air.raw.get<{ id: number }>('https://api.test/a', {
+      // @ts-expect-error same rule on the raw client
+      parse: 'stream',
+    })
+  })
+
+  // The options on a thrown error have to be nameable and assignable by a caller, or the
+  // narrowed AirOptions turns a public field into a type you can read and never hold. This
+  // was broken once, between narrowing AirOptions and exporting AnyOptions.
+  it('hands back error options a caller can still name', async () => {
+    mockFetch(() => json({}, { status: 500 }))
+    const error = await air
+      .get('https://api.test/a', { parse: 'text' })
+      .catch((e: unknown) => e)
+
+    expect(isAirError(error)).toBe(true)
+    if (!isAirError(error)) return
+    const options: AnyOptions = error.request.options
+    expect(options.parse).toBe('text')
+  })
+
+  it('still catches a mistyped parse mode', async () => {
+    mockFetch()
+    // @ts-expect-error 'respons' is not a mode
+    await air.get('https://api.test/a', { parse: 'respons' })
   })
 
   it('resolves a body-less response to null when streaming', async () => {
@@ -655,7 +696,7 @@ describe('raw', () => {
   it('hands back an unread stream alongside the response', async () => {
     mockFetch(() => json({ id: 1 }, { headers: { 'content-length': '9' } }))
 
-    const { data, response } = await air.raw.get<ReadableStream>('https://api.test/a', {
+    const { data, response } = await air.raw.get('https://api.test/a', {
       parse: 'stream',
     })
 

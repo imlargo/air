@@ -9,6 +9,7 @@ export type {
   AirRequest,
   AirResponse,
   AirURL,
+  AnyOptions,
   Fetch,
   HeaderSource,
   Query,
