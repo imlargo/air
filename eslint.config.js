@@ -5,17 +5,38 @@ import tseslint from 'typescript-eslint'
 export default defineConfig(
   globalIgnores(['dist']),
   js.configs.recommended,
-  tseslint.configs.recommended,
   {
-    // examples/ and scripts/ are plain JS, so they need the runtime globals TS
-    // already knows about for src/ and test/ via lib.dom.d.ts.
+    // Type-aware linting for everything TypeScript. `strict` over `recommended` because a
+    // library this small has no excuse for an unnecessary assertion or a floating promise.
+    files: ['**/*.ts'],
+    extends: [tseslint.configs.strictTypeChecked, tseslint.configs.stylisticTypeChecked],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      // `${response.status}` in an error message is the intended use of a template.
+      '@typescript-eslint/restrict-template-expressions': [
+        'error',
+        { allowNumber: true },
+      ],
+    },
+  },
+  {
+    // Tests index into arrays of recorded requests under noUncheckedIndexedAccess, and
+    // `requests[0]!` is the honest spelling of "this test sent exactly one request".
+    files: ['test/**'],
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+  {
+    // examples/ and scripts/ are plain JS, so they need the runtime globals TypeScript
+    // already knows about for src/ and test/ via lib.dom.d.ts. Hand-maintained rather
+    // than pulling in the `globals` package: a devDependency for a lint config is still a
+    // devDependency. Alphabetical, so adding one is obvious.
     files: ['examples/**', 'scripts/**'],
     languageOptions: {
       globals: {
-        // Hand-maintained rather than pulling in the `globals` package: a devDependency for
-        // a lint config is still a devDependency. These are the platform globals TypeScript
-        // already knows about for src/ and test/ through lib.dom.d.ts. Alphabetical, so
-        // adding one is obvious.
         AbortController: 'readonly',
         AbortSignal: 'readonly',
         FormData: 'readonly',
@@ -30,6 +51,7 @@ export default defineConfig(
         URLSearchParams: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
+        performance: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
       },

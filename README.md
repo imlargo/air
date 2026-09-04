@@ -65,7 +65,10 @@ long-lived client stays correct across a token refresh — see [Headers](#header
 | `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer'` | Overrides detection; `'stream'` below   |
 | `fetch`   | `Fetch`                                       | Defaults to the global `fetch`          |
 
-Anything else is forwarded to the underlying `fetch` call.
+Anything else is forwarded to the underlying `fetch` call. An explicit `undefined` on a
+request opts out of the client's default for that option — `{ parse: undefined }` goes back
+to detection, `{ fetch: undefined }` back to the global — while `headers` and `query` merge
+instead of replacing.
 
 The request target itself can be a `string` or a `URL` — whatever you already have on hand:
 
@@ -74,6 +77,31 @@ await air.get(new URL('/users/1', 'https://api.example.com'))
 ```
 
 A `URL` is already absolute, so `baseURL` is skipped for it, same as for an absolute string.
+
+### Runtime-specific options
+
+Some runtimes extend `RequestInit` with their own fields — Next.js has `next: { revalidate }`,
+Cloudflare Workers has `cf`, undici has `dispatcher`. `air` forwards them to `fetch` untouched,
+but `AirOptions` does not list them, so an object literal carrying one is a compile error.
+Two ways through:
+
+```ts
+// 1. The runtime augments RequestInit globally. Next.js does exactly this, so `next` already
+//    typechecks in a Next app with nothing to do — AirOptions extends RequestInit.
+await api.get('/users', { next: { revalidate: 60 } })
+
+// 2. Augment AirOptions yourself, once, in any .d.ts of your project. It is an interface, so
+//    it is open:
+declare module '@korastd/air' {
+  interface AirOptions {
+    cf?: { cacheTtl?: number }
+  }
+}
+await api.get('/users', { cf: { cacheTtl: 60 } })
+```
+
+There is no index signature on `AirOptions` on purpose: it would take excess-property checking
+down with it, and `parse: 'respons'` would start compiling.
 
 ### Fetch
 
@@ -317,8 +345,8 @@ wrapper can wrap another wrapper.
 
 ### Query
 
-Existing search params are preserved, `undefined` and `null` are dropped, and arrays produce
-repeated keys.
+Existing search params are preserved byte-for-byte and new ones are appended after them;
+`undefined` and `null` are dropped, and arrays produce repeated keys.
 
 ```ts
 air.get('/search?q=air', { query: { tags: ['a', 'b'], page: 2, cursor: null } })
@@ -480,6 +508,15 @@ try {
 }
 ```
 
+`error.response` is there for its status, headers and URL. Its body has already been read
+into `error.data`, so `response.bodyUsed` is `true` and reading it again throws — same as the
+`response` on [`raw`](#raw). If you need the error body's bytes verbatim, a [`fetch`](#fetch)
+wrapper sees the response before `air` does.
+
+The message names the two reasons the platform issues — `timed out` for `AbortSignal.timeout`
+and `was aborted` for a plain `abort()`. A custom `abort(reason)` is reported as
+`failed: <reason>`, and the reason itself is `error.cause`.
+
 `isAirError` matches on a `Symbol.for('air.error')` brand rather than `instanceof`, so it
 still works when an app ends up with two copies of the package loaded.
 
@@ -515,8 +552,9 @@ node examples/retry.mjs
 ## Development
 
 ```bash
+pnpm check      # what CI runs: format check, lint, typecheck, tests, build
 pnpm build      # tsdown → dist/ (ESM + .d.ts)
-pnpm test       # vitest run
+pnpm test       # vitest run — pnpm test:watch to keep it running
 pnpm examples   # build, then run examples/ against a local server
 pnpm lint       # eslint . --max-warnings 0
 pnpm format     # prettier --write .

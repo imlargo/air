@@ -1,6 +1,6 @@
 // Runs every example against the BUILT dist/, in its own process.
 //
-// This is the integration lane. `test/air.test.ts` mocks `fetch`, and a mock agrees with
+// This is the integration lane. The vitest suite in `test/` mocks `fetch`, and a mock agrees with
 // whatever the person who wrote it assumed — every bug this library has shipped got through
 // exactly that gap. The examples talk to a real socket, so they disagree when it matters.
 //

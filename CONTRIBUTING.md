@@ -217,6 +217,9 @@ These are the details that make the library feel good. Get them exactly right.
   building are far more common than intentional protocol-relative URLs, which are deprecated
   anyway; `ofetch` requires the scheme for the same reason. This was changed once and reverted when
   a test showed `///users` resolving to `https://users/`.
+- A path that is only a query string or a fragment (`?page=2`, `#top`) extends the base rather
+  than descending from it, so no slash is inserted: `https://api.test/v1` + `?page=2` is
+  `https://api.test/v1?page=2`, not `/v1/?page=2`.
 - The fragment stays at the end when query params are added.
 
 ### Query serialization
@@ -231,8 +234,13 @@ These are the details that make the library feel good. Get them exactly right.
   an array rather than overwriting. Both `buildURL` and `merge()` call it — `merge()` because a
   `URLSearchParams` spreads to `{}`, so a client default written that way would vanish the moment
   a request passed any options at all. There is a test pinning each.
-- `query` is merged into the URL's search params.
-- Existing search params in the URL are preserved, not overwritten. A repeated key appends.
+- `query` is **appended after** the URL's existing search string, which is left byte-for-byte
+  alone. Re-serialising it through `URLSearchParams` would turn `?msg=hola%20mundo` into
+  `?msg=hola+mundo` — a visible change to params the caller never asked air to touch. So
+  `buildURL` builds only the new params and concatenates; and a query with nothing to append
+  (`{}`, an empty `URLSearchParams`, all values nullish) returns the URL untouched. There is a
+  test for each of those.
+- Consequently a repeated key appends: `?tags=a` + `{ tags: 'b' }` is `?tags=a&tags=b`.
 - `undefined` and `null` values are dropped entirely — but `false`, `0` and `''` are kept. Dropping
   falsy values instead of nullish ones is a classic bug; there is a test pinning it.
 - Arrays produce repeated keys: `{ tags: ['a', 'b'] }` → `?tags=a&tags=b`. An empty array produces
@@ -244,12 +252,30 @@ These are the details that make the library feel good. Get them exactly right.
 - Note for callers: TypeScript gives object type aliases an implicit index signature but never gives
   interfaces one, so `query` accepts a `type` and rejects an `interface`. Documented in the README;
   not worth making `AirOptions` generic to work around.
-- `merge()` in `client.ts` produces `query: undefined` when neither side has one — never an
-  unconditional `{ ...base.query, ...extra.query }`. Passing an empty object through to `buildURL`
-  is not equivalent to passing nothing: `buildURL` treats any truthy `query` as "re-parse and
-  rebuild the search string," which round-trips it through `URLSearchParams` and turns
-  `?msg=hola%20mundo` into `?msg=hola+mundo` — a visible change nobody asked for, triggered just by
-  `options` being present for an unrelated reason (headers, say). There is a test pinning this.
+- `mergeQuery` in `client.ts` folds both sides through `toQueryRecord` before spreading, because
+  a `URLSearchParams` spreads to `{}` and a client default written that way would vanish the
+  moment a request passed any query at all. When only one side has a query it is passed through
+  as-is; `buildURL` folds it.
+
+### Option merging
+
+`merge()` in `client.ts` is the one place options combine, and **every request passes through
+it exactly once** — with or without per-request options, from the root `air` or from a client
+built by the exported `create()`. That invariant is what makes the rules below hold on every
+path: before it existed, defaults handed straight to `create()` reached `request()`
+un-normalised, and a `null` header went out as the string `"null"` (0.5.0). Do not add a fast
+path that skips the merge; the closure it allocates costs nothing measurable.
+
+- **Scalars are last-wins, so an explicit `undefined` on the request opts out of the client's
+  default.** `baseURL: undefined` drops the base, `fetch: undefined` goes back to the global,
+  `parse: undefined` goes back to detection, `signal: null` sends none. This is plain spread
+  semantics and it is the documented contract, not an accident to be fixed: it gives every
+  scalar option a per-request opt-out without a sentinel per option.
+- **`headers` and `query` combine** instead of replacing — request wins on a shared key. Their
+  rules are above and below.
+- A shortcut's method wins over `options.method`: `api.get(url, { method: 'POST' })` sends a
+  `GET`. The callable form leaves the method to the options, and an unrecognised one
+  (`method: 'QUERY'`) is uppercased and forwarded as written.
 
 ### Headers
 
@@ -266,12 +292,11 @@ These are the details that make the library feel good. Get them exactly right.
   not. The asymmetry is the price, deliberately paid: the alternative design was
   `headers: (inherited) => ...`, which is strictly more powerful, keeps every shape uniform, and is
   one argument away from the `beforeRequest` hook the non-goals forbid.
-- Removal runs through `applyHeaders` in `client.ts`, and **`request()` has to call it too**, not
-  just `mergeHeaders`. `create()` takes its defaults as given and `merge()` hands them straight
-  back when a call passes no options, so a record written into the exported `create()` reaches
-  `request()` having never been normalized; the `Headers` constructor would stringify the `null`
-  and send `Authorization: null`. `air.create()` does not hit that path because it merges — which
-  is precisely why the test for it uses `create` directly.
+- Removal runs through `applyHeaders` in `client.ts`, which is the only thing that ever writes
+  into a `Headers` instance — the `Headers` constructor is never handed a record, because it
+  would stringify a `null` and send `Authorization: null`. That was a shipped bug (0.5.0), on the
+  one path that used to skip the merge; see Option merging above for the invariant that closed
+  it, and the test that uses the exported `create()` directly to pin that path.
 - `headers` may also be a function (sync or async) returning one of the above; see Lazy headers.
 - A header function is called once per request and is **not** deduplicated. That is correct — the
   point is a fresh value per request — but an async one that hits the network will do so on every
@@ -305,6 +330,8 @@ Auto-detect the body type. Never re-serialize something that is already a valid 
 - Parse based on the response `Content-Type` by default: JSON for `application/json` and `+json`
   suffixes, text for `text/*`, a `Blob` for anything else, including a missing header. `arrayBuffer`
   is never chosen automatically — it is only reachable through `parse`.
+- The media type is matched **case-insensitively** and its parameters are ignored, because that is
+  what the grammar says: `Application/JSON; Charset=UTF-8` is JSON. There is a test.
 - `stream` **is** chosen automatically, for the content types that are streams by definition:
   `text/event-stream`, `application/x-ndjson` and `application/jsonl`. Every other mode reads the
   body to completion, so against a real SSE endpoint — one that stays open, which is the entire
@@ -445,6 +472,30 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
   unrelated package on npm. The scope is Kora Estudio's; the internal export name (`air`, `create`,
   `AirError`, ...) is unaffected, only the install/import specifier changes
   (`import air from '@korastd/air'`).
+- **`error.response` arrives with its body consumed.** `request()` reads the body into
+  `error.data` before attaching the response, so `error.response.bodyUsed` is `true` and
+  `error.response.text()` throws. The alternative — `response.clone()` before parsing — buffers
+  every failed body a second time for a capability almost nobody uses. Documented instead, in the
+  README and on the `AirError.response` TSDoc; the escape hatch for the raw bytes is a `fetch`
+  wrapper, which sees the response before air does.
+- **`Query` accepts a `type` and rejects an `interface`, and there is no fix worth its cost.**
+  TypeScript gives object type aliases an implicit index signature and never gives interfaces one.
+  The obvious fix, a mapped type inferred per call (`Q extends MappedQuery<Q>`), was compiled
+  against TypeScript 6: it works when the caller omits the response type and **collapses on
+  `api.get<User>(url, { query })`**, because TypeScript has no partial type-argument inference —
+  writing the explicit `<T>` pins `Q` to its default and the interface is rejected again.
+  "Specify both type arguments or neither" is worse than "use `type`", so the requirement stays
+  documented in the README and the type stays as it is.
+- **No index signature on `AirOptions`**, even though runtime-specific init (`next`, `cf`,
+  `dispatcher`) is forwarded at runtime and rejected by the compiler in an object literal. An
+  index signature would take excess-property checking down with it, and `parse: 'respons'` would
+  start compiling. The README documents the two routes that work — a global `RequestInit`
+  augmentation (Next.js ships one) and a module augmentation of `AirOptions` — both compiled
+  against the built `dist/` to confirm. A third that reads as obviously correct does **not**
+  work and was removed after compiling it: passing a variable instead of a literal only escapes
+  excess-property checking if the object also shares at least one property with `AirOptions`;
+  `{ next: {...} }` on its own is a weak-type error (TS2559). Verify a type-level claim by
+  compiling it, not by reasoning about it.
 
 ---
 
@@ -454,13 +505,25 @@ Raised, considered, and deliberately left alone. Do not re-open without new info
 - Named exports for everything; default export is the root `air` instance.
 - Keep `src/` flat until it genuinely hurts. Small focused modules (`url.ts`, `body.ts`, `error.ts`) beat one large file, but don't build a directory tree for six functions.
 - No barrel files other than `src/index.ts`.
-- No comments explaining _what_ the code does — the code says that. Comment only _why_, and only for non-obvious decisions (spec quirks, runtime bugs being worked around, a change that was tried and reverted).
+- Two kinds of comment, and they look different on purpose. **Public surface gets TSDoc**
+  (`/** */`): every exported type, field, function and class, because tsdown carries it into the
+  `.d.ts` and it is what a user sees on hover — write it for them, in terms of what the thing
+  does for a caller. **Internals get `//`**, and only for _why_: a spec quirk, a runtime bug being
+  worked around, a change that was tried and reverted. Never for _what_ — the code says that.
+- Lint is `typescript-eslint`'s `strictTypeChecked` plus `stylisticTypeChecked`, type-aware, with
+  `--max-warnings 0`. A rule is relaxed only with a comment saying for which files and why; today
+  that is `no-non-null-assertion` in `test/`, where `requests[0]!` is the honest spelling of
+  "this test sent exactly one request".
 
 ---
 
 ## Testing
 
-- Vitest. Tests live in `test/`, never beside the source.
+- Vitest. Tests live in `test/`, never beside the source, **one file per concern**: `url`,
+  `body`, `parse`, `raw`, `errors`, `signals`, `clients`, `fetch`. A new behavior goes in the
+  file whose `describe` it belongs to; a new concern gets a new file. `test/setup.ts` restores the
+  global `fetch` after every test so a stub cannot leak between files, and `test/mock.ts` is the
+  shared double.
 - Test real behavior through the public API, not internals. No test imports from `src/` except `src/index.ts`.
 - Mock `fetch` minimally: the mock builds a real `Request` from what was passed and records it, so
   assertions read against the `Request` that would have been sent. No deep mocking machinery.
@@ -564,13 +627,16 @@ rejected, so the next person who reads `ofetch` doesn't re-propose them from scr
 ## Commands
 
 ```bash
+pnpm check         # format:check, lint, typecheck, test, build — the `check` job in CI, locally
 pnpm build         # tsdown → dist/ (ESM + .d.ts)
 pnpm test          # vitest run
+pnpm test:watch    # vitest, re-running on change
 pnpm typecheck     # tsc --noEmit
 pnpm lint          # eslint . --max-warnings 0
 pnpm format        # prettier --write .
 pnpm format:check  # prettier --check . — what CI runs, writes nothing
 pnpm smoke         # build, then run scripts/smoke.mjs against the built dist/
+pnpm examples      # build, then run every examples/*.mjs against a local server
 pnpm demo          # build, then run examples/demo.mjs against real endpoints
 ```
 

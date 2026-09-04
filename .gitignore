@@ -1,3 +1,6 @@
 node_modules
 dist
+
+# Local notes and per-machine tooling state; neither is part of the package.
 context
+.claude

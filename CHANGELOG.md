@@ -10,6 +10,33 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An existing search string is left byte-for-byte alone when `query` appends to it.**
+  `air.get('/s?msg=hola%20mundo', { query: { page: 2 } })` used to re-serialise the whole
+  search string through `URLSearchParams` on its way to adding `page`, so `%20` came out as `+`
+  on a param you never asked air to touch. New params are now appended after what was there,
+  and a query with nothing to append — `{}`, an empty `URLSearchParams`, all values nullish —
+  leaves the URL untouched.
+- **A query-only or fragment-only path no longer gets a slash inserted before it.**
+  `baseURL: 'https://api.test/v1'` + `'?page=2'` is `https://api.test/v1?page=2`, where it
+  used to be `/v1/?page=2`.
+- **The response `Content-Type` is matched case-insensitively.** A server answering
+  `Application/JSON` got a `Blob` instead of parsed JSON; media types are case-insensitive by
+  grammar, so it is JSON now.
+
+### Changed
+
+- **`package.json` declares `types` explicitly** in its `exports` map, alongside `default`.
+  Resolution already found the sibling `.d.mts` under `moduleResolution: bundler` and
+  `node16`; this makes it true for tooling that reads the condition instead of guessing.
+- **Every request normalises its options through one path.** A `null` header written into the
+  exported `create()`'s defaults, a `URLSearchParams` client query, an explicit `undefined`
+  opting out of a client default — all behave the same whether or not the call passed any
+  options of its own. Observable only as the absence of a class of bug; the public API and every
+  documented behavior are unchanged. The types now carry TSDoc on the whole public surface, so
+  hovering an option in an editor shows what it does.
+
 ## [1.0.0] — 2026-08-19
 
 The API is stable from here: no breaking change without a 2.0. What that covers is the export

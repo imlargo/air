@@ -4,7 +4,7 @@
 //
 // This is also why the examples double as the integration lane: they exercise the built
 // `dist/` against a real socket, which is where every bug this project has shipped was
-// hiding. `test/air.test.ts` mocks `fetch`, and a mock agrees with whatever you assume.
+// hiding. The vitest suite in `test/` mocks `fetch`, and a mock agrees with whatever you assume.
 
 import http from 'node:http'
 

@@ -1,125 +1,176 @@
-// Every member answers one question — what shape should the body be? — so the
-// option means exactly one thing. Where the *response* rather than the body is
-// what you need, that is `client.raw`, not a mode here.
-//
-// `stream` is the one member whose type is fixed and known at compile time, so it is
-// the one that must not be paired with a caller's `<T>`. `AirOptions.parse` therefore
-// excludes it, and it is reachable only through the overload below, which has no type
-// parameter to disagree with. This is not the rejected `MappedResponseType`: nothing is
-// inferred and no mode's type is computed from a conditional — one mode is simply
-// declared where a generic cannot reach it.
+/**
+ * How a response body is read. Each mode answers one question — what shape should the body
+ * be? — and never decides what a call resolves to; that is {@link AirClient.raw}.
+ *
+ * `'stream'` is the one mode whose type is fixed at compile time, so it is the one that must
+ * not be paired with a caller's `<T>`. {@link AirOptions.parse} therefore excludes it, and it
+ * is reachable only through {@link StreamOptions}, whose call signature has no type parameter
+ * to disagree with.
+ */
 export type ParseMode = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream'
 
+/**
+ * A query value. Primitives only: an object or a `Date` is a compile error rather than a
+ * silent `[object Object]` or a locale-dependent string. Serialise those yourself, so the
+ * choice stays visible.
+ */
 export type QueryValue = string | number | boolean | null | undefined
 
-// Three spellings of the same thing. The record is the one to reach for; the other
-// two are what a caller already holds when the params came from somewhere else — the
-// current URL's `searchParams`, a form, another library. Converting one of those into
-// the record by hand is a grouping loop rather than a one-liner, because
-// Object.fromEntries keeps only the last of a repeated key and `?tag=a&tag=b`
-// collapses to `?tag=b`. Same argument as `URL` for the request target: the option
-// was narrower than the primitive it wraps.
+/**
+ * Query params in any of three spellings of the same thing: a record, a `URLSearchParams`, or
+ * a list of `[key, value]` tuples. The record is the one to write; the other two are what a
+ * caller already holds when the params came from elsewhere — the current URL's
+ * `searchParams`, a form, another library — and handing one over keeps every value of a
+ * repeated key, where converting it by hand with `Object.fromEntries` would not.
+ *
+ * `undefined` and `null` values are dropped; `false`, `0` and `''` are kept. An array repeats
+ * the key: `{ tags: ['a', 'b'] }` is `?tags=a&tags=b`.
+ *
+ * Type a record with `type`, not `interface`: object type aliases get an implicit index
+ * signature, interfaces never do, so an `interface` is not assignable here.
+ */
 export type Query =
   | Record<string, QueryValue | readonly QueryValue[]>
   | URLSearchParams
   | readonly (readonly [string, QueryValue])[]
 
-// `null` as a value removes a header a client default put there. Nothing else can
-// say that: '' sends an empty header, which is not the same as absent, and a function
-// only ever adds. It is the idiom `signal: null` already uses for "explicitly absent",
-// one level deeper. `undefined` does the same, because `query` already drops both and
-// splitting them here would be an inconsistency with no argument behind it — and
-// because `{ Authorization: enabled ? token : undefined }` is how this gets written.
-//
-// It works for the record form only — a Headers instance has no way to represent
-// "delete" — so the merge rule is uniform across every HeadersInit shape for *setting*
-// a header and record-only for *removing* one. That asymmetry is the price of the
-// sentinel and it is deliberate; the alternative was a function of the inherited
-// headers, which is one argument away from the beforeRequest hook the non-goals forbid.
-//
-// Deliberately not re-exported from index.ts: it names a shape the implementation
-// needs, and `HeaderSource` is the one callers write.
+/**
+ * Any `HeadersInit`, or a record whose values may also be `null` or `undefined`.
+ *
+ * In the record form, `null` removes a header a client default put there — the only shape
+ * that can say so, since `''` sends an empty header and a function only ever adds.
+ * `undefined` does the same, because `{ Authorization: signedIn ? token : undefined }` is how
+ * that gets written. A `Headers` instance or a tuple list can only set.
+ *
+ * Internal: {@link HeaderSource} is the type callers write.
+ */
 export type HeaderInit = HeadersInit | Record<string, string | null | undefined>
 
-// A function so a long-lived client (`air.create({ headers })`) can hand back a
-// fresh value — e.g. the current bearer token — on every request instead of the
-// one captured when the client was created.
+/**
+ * Headers, or a function (sync or async) that returns them.
+ *
+ * A plain value is evaluated once, when written. A function is called on every request, so a
+ * long-lived client stays correct when the value changes after the client was created — a
+ * bearer token that gets refreshed, for instance. It is not deduplicated: an async function
+ * that hits the network does so per request, and single-flighting it is the caller's job.
+ */
 export type HeaderSource = HeaderInit | (() => HeaderInit | Promise<HeaderInit>)
 
-// Same reason as HeaderSource, and a sharper failure: an AbortSignal written into
-// a client's defaults is one instance shared by every request it will ever make,
-// so `air.create({ signal: AbortSignal.timeout(5000) })` starts its clock at
-// create() time and, five seconds later, fails every subsequent request
-// instantly — a fired signal stays fired. A function is called per request, so
-// each one gets its own.
+/**
+ * An `AbortSignal`, or a function that returns one per request.
+ *
+ * The function form exists for client defaults. A signal written into `air.create()` is one
+ * instance shared by every request that client will ever make, and a fired signal stays
+ * fired — so `air.create({ signal: AbortSignal.timeout(5000) })` works for five seconds and
+ * is then permanently broken. `signal: () => AbortSignal.timeout(5000)` gives each request
+ * its own. Returning `undefined` opts one request out of the client's signal.
+ *
+ * Whichever form, the signal reaches `fetch` untouched: never wrapped, never combined with
+ * another. Compose signals yourself with `AbortSignal.any`.
+ */
 export type SignalSource = AbortSignal | (() => AbortSignal | null | undefined)
 
-// Narrower than the global fetch, because air only ever calls it one way: a URL
-// string and a full init. Narrow on the parameters means wide on what qualifies,
-// so the global itself, a framework's per-request wrapper, and a test double all
-// satisfy it.
+/**
+ * The transport. Narrower than the global `fetch` on its parameters — air only ever calls it
+ * with a URL string and a full init — which is what makes it wide on implementations: the
+ * global itself, a framework's per-request wrapper (SvelteKit's `event.fetch`), an
+ * instrumented fetch that logs or retries, and a test double all qualify.
+ */
 export type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
+/**
+ * Options for a request, or defaults for a client. Every field is optional. Anything not
+ * listed here is forwarded to `fetch` untouched (`credentials`, `cache`, `redirect`, ...).
+ *
+ * Scalars merge last-wins, so an explicit `undefined` on a request opts out of the client's
+ * default. `headers` and `query` combine instead, the request winning on a shared key.
+ */
 export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'signal'> {
-  // `URL` for the same reason the request target takes one: a caller holding a parsed
-  // URL should not have to write `.href` to hand it over.
+  /**
+   * Joined with the request path as strings, so a path prefix survives: `https://api.test/v1`
+   * + `/users` is `https://api.test/v1/users`. Skipped for an absolute URL.
+   */
   baseURL?: string | URL
+  /** Appended to the URL's existing search params, which are left byte-for-byte alone. */
   query?: Query
+  /**
+   * Plain objects and arrays are JSON-stringified with `Content-Type: application/json`
+   * unless one is set. `FormData`, `URLSearchParams`, `Blob`, `ArrayBuffer`, typed arrays,
+   * `ReadableStream` and strings pass through untouched. Never sent on `GET` or `HEAD`.
+   */
   body?: unknown
+  /** Merged onto the client's; see {@link HeaderSource} for the function form and `null`. */
   headers?: HeaderSource
+  /**
+   * Overrides detection from the response `Content-Type`. `'stream'` is a per-call shape
+   * with its own signature — see {@link StreamOptions} — and not a client default.
+   */
   parse?: Exclude<ParseMode, 'stream'>
-  // Still forwarded to fetch untouched — never wrapped, never composed with
-  // another signal. The function form only decides *which* signal that is.
+  /** Forwarded to `fetch` untouched; see {@link SignalSource} for the function form. */
   signal?: SignalSource | null
-  // The global fetch unless given one. A server framework hands out a wrapper
-  // that only exists for the duration of one incoming request — SvelteKit's
-  // `event.fetch` forwards that request's cookies, resolves relative URLs
-  // against it, and answers a same-app route by calling its handler instead of
-  // going back out over HTTP — so it has to arrive as an option; there is
-  // nothing ambient for air to reach for.
+  /**
+   * The function to call instead of the global `fetch`. For server-side rendering, where the
+   * framework hands each incoming request its own — carrying its cookies, resolving relative
+   * URLs, short-circuiting same-app routes — and nothing ambient can stand in for it.
+   * Resolved at request time when unset, so a polyfill installed after import still applies.
+   */
   fetch?: Fetch
-  // Declared here because the DOM lib's RequestInit still omits it, so callers
-  // could not pass it even though fetch requires it for a streaming body. air
-  // sets it automatically for a ReadableStream; this is the manual override.
+  /**
+   * Required by `fetch` for a `ReadableStream` body, and set automatically for one. The DOM
+   * lib's `RequestInit` omits it, so this is where a caller can override it.
+   */
   duplex?: 'half'
 }
 
-// The options a streaming call takes: everything else, with `parse` required and fixed.
-// Public, because `AirRequest.options` is one of these or an `AirOptions`, and a caller
-// holding `error.request.options` has to be able to name what they are holding.
+/**
+ * The options of a call that wants the body unread, as a `ReadableStream<Uint8Array>`. The
+ * call signature that takes these has no `<T>`, because the type is already known — so
+ * `api.get<User>('/x', { parse: 'stream' })` is a compile error, not a stream wearing a
+ * `User`'s name.
+ */
 export type StreamOptions = Omit<AirOptions, 'parse'> & { parse: 'stream' }
 
-// Either shape, for the implementation only: request() takes both. Never re-exported —
-// the union is spelled out where a caller actually meets it, on AirRequest, so reading an
-// error never requires learning a third options type.
+/**
+ * Either options shape, for the implementation: `request()` takes both. Never exported —
+ * where a caller meets the union, on {@link AirRequest.options}, it is written out.
+ */
 export type AnyOptions = AirOptions | StreamOptions
 
+/** The request target: a string, or a `URL` — which is already absolute and skips `baseURL`. */
+export type AirURL = string | URL
+
+/** The request as it was sent, attached to every {@link AirError}. */
 export interface AirRequest {
+  /** The final URL, query string included. */
   url: string
+  /** Uppercased. */
   method: string
-  // The headers as actually sent, already resolved and with any Content-Type the
-  // body added. `options.headers` may still be an unevaluated function.
+  /**
+   * The headers as actually sent: every source resolved, plus any `Content-Type` the body
+   * added. `options.headers` may still be an unevaluated function, which is no use when you
+   * are holding a `401` and want to see the token.
+   */
   headers: Headers
+  /** The merged options the request was made with. */
   options: AirOptions | StreamOptions
 }
 
-// A URL is already absolute, so it needs no baseURL — the same string a caller
-// would get from url.toString(), just without having to write that themselves.
-export type AirURL = string | URL
-
-// What a successful call discards once the body is parsed. `data` is the exact
-// value the plain client resolves to — the raw client adds the response, it does
-// not change the parsing.
+/** What {@link AirClient.raw} resolves to: the parsed body and the response it came from. */
 export interface AirResponse<T = unknown> {
+  /** Exactly what the plain client would have resolved to. */
   data: T
+  /**
+   * For headers, status and URL. Its body has been read into `data` in every mode that
+   * reads the body — except `parse: 'stream'`, where `data` *is* `response.body`: one stream
+   * under two names, consumed once from either.
+   */
   response: Response
 }
 
-// Declared once and reused by the callable form and all seven verbs, so a signature can
-// never be added to one and forgotten in another — the same reason `verbs()` exists in
-// client.ts. The stream overload comes first because overload resolution takes the first
-// match, and it carries no <T>: with `parse: 'stream'` the body's type is known, so there
-// is nothing for a caller to assert and nothing to assert wrongly.
+// Declared once and reused by the callable form and all seven verbs, so a signature cannot
+// be added to one and forgotten in another. The stream overload comes first because
+// resolution takes the first match, and it carries no <T>: with `parse: 'stream'` there is
+// nothing for a caller to assert and nothing to assert wrongly.
 interface Call {
   (url: AirURL, options: StreamOptions): Promise<ReadableStream<Uint8Array>>
   <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
@@ -130,10 +181,14 @@ interface RawCall {
   <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
 }
 
-// The same seven verbs, resolving to both halves. A separate client rather than
-// a `raw: true` option because an option that rewrites the return type has to be
-// read back out with a conditional type, which is the inference the explicit
-// <T> exists to avoid.
+/**
+ * The same client, resolving to `{ data, response }` instead of the body alone. Same request,
+ * same parsing, same options; it only adds the response. A non-2xx still throws.
+ *
+ * A separate client rather than a `raw: true` option, because an option that rewrites the
+ * return type has to be read back out with a conditional type — the inference the explicit
+ * `<T>` exists to avoid.
+ */
 export interface AirRawClient extends RawCall {
   get: RawCall
   post: RawCall
@@ -144,6 +199,11 @@ export interface AirRawClient extends RawCall {
   options: RawCall
 }
 
+/**
+ * An HTTP client. Callable directly (`api('/users')`, a `GET`), with a shortcut per method,
+ * a {@link AirClient.raw} twin, and `create()` for deriving a client that inherits these
+ * defaults without mutating them. The root export `air` is one of these with empty defaults.
+ */
 export interface AirClient extends Call {
   get: Call
   post: Call
@@ -152,6 +212,8 @@ export interface AirClient extends Call {
   delete: Call
   head: Call
   options: Call
+  /** Resolves to both the parsed body and the response. */
   raw: AirRawClient
+  /** A client with these defaults merged over the current ones. */
   create(options?: AirOptions): AirClient
 }

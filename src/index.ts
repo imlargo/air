@@ -18,6 +18,15 @@ export type {
   StreamOptions,
 } from './types.js'
 
+/**
+ * The root client: callable, with a shortcut per method, `raw`, and `create()` for a client
+ * with defaults. No defaults of its own.
+ *
+ * ```ts
+ * const user = await air.get<User>('https://api.example.com/users/1')
+ * const api = air.create({ baseURL: 'https://api.example.com' })
+ * ```
+ */
 export const air = create()
 
 export default air
