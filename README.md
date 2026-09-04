@@ -3,15 +3,13 @@
 [![CI](https://github.com/imlargo/air/actions/workflows/ci.yml/badge.svg)](https://github.com/imlargo/air/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@korastd/air)](https://www.npmjs.com/package/@korastd/air)
 
-A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
+A tiny HTTP client for TypeScript, built on native `fetch`.
 
-- Zero runtime dependencies
-- ESM only
-- Auto-parsing, auto body detection
-- Non-2xx responses throw
-- Bring your own `fetch` — SvelteKit's `event.fetch` and friends drop straight in
-- No timeout or retry machinery — `AbortSignal` and a `for` loop already do that
-- Works in Node 20+, browsers, Deno, Bun and edge runtimes
+- Zero runtime dependencies. ESM only. About 2.5 kB min+gzip.
+- A call resolves to the parsed body. Non-2xx responses throw.
+- Bring your own `fetch`, for server-side rendering and for tests.
+- No timeout, retry or interceptor machinery. `AbortSignal` and a function you write cover them.
+- Node 20+, browsers, Deno, Bun and edge runtimes.
 
 ```bash
 pnpm add @korastd/air
@@ -22,20 +20,19 @@ pnpm add @korastd/air
 ```ts
 import air from '@korastd/air'
 
-// Callable directly
-const data = await air<User>('https://api.example.com/users/1')
-
-// Method shortcuts: get, post, put, patch, delete, head, options
+const user = await air<User>('https://api.example.com/users/1') // GET
 const users = await air.get<User[]>('https://api.example.com/users')
 const created = await air.post<User>('https://api.example.com/users', {
   body: { name: 'Ada' },
 })
 ```
 
-### Clients
+Shortcuts: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
 
-`air.create()` returns something with the same shape as `air` itself — callable, with the
-same shortcuts, and its own `create()` for deriving further clients.
+## Clients
+
+`air.create(defaults)` returns a client with the same shape as `air`. Its own `create()` derives
+a further client that inherits these defaults.
 
 ```ts
 const api = air.create({
@@ -46,52 +43,39 @@ const api = air.create({
 const user = await api.get<User>('/users/1')
 const page = await api.get<Page<User>>('/users', { query: { page: 2, active: true } })
 
-const admin = api.create({ headers: { 'X-Scope': 'admin' } }) // inherits baseURL + headers
+const admin = api.create({ headers: { 'X-Scope': 'admin' } })
 ```
-
-`headers` can be a function instead of a plain object. `air` calls it on every request, so a
-long-lived client stays correct across a token refresh — see [Headers](#headers) below.
 
 ## Options
 
-| Option    | Type                                          | Notes                                   |
-| --------- | --------------------------------------------- | --------------------------------------- |
-| `baseURL` | `string \| URL`                               | Joined with the path, no double slashes |
-| `method`  | `string`                                      | Inferred by the shortcuts               |
-| `query`   | `Query`                                       | Record, `URLSearchParams`, or tuples    |
-| `body`    | `unknown`                                     | Type auto-detected                      |
-| `headers` | `HeaderSource`                                | Merged with defaults; `null` removes    |
-| `signal`  | `SignalSource`                                | Forwarded to `fetch` untouched          |
-| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer'` | Overrides detection; `'stream'` below   |
-| `fetch`   | `Fetch`                                       | Defaults to the global `fetch`          |
+| Option    | Type                                          | Notes                                                       |
+| --------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `baseURL` | `string \| URL`                               | Joined with the path as strings; the path prefix is kept    |
+| `method`  | `string`                                      | Set by the shortcuts                                        |
+| `query`   | `Query`                                       | Record, `URLSearchParams` or `[key, value]` tuples          |
+| `body`    | `unknown`                                     | Type detected; see [Body](#body)                            |
+| `headers` | `HeaderSource`                                | Merged over the client's; `null` removes; may be a function |
+| `signal`  | `SignalSource`                                | Forwarded to `fetch` unchanged; may be a function           |
+| `parse`   | `'json' \| 'text' \| 'blob' \| 'arrayBuffer'` | Overrides detection; `'stream'` has its own shape           |
+| `fetch`   | `Fetch`                                       | Replaces the global `fetch`                                 |
 
-Anything else is forwarded to the underlying `fetch` call. An explicit `undefined` on a
-request opts out of the client's default for that option — `{ parse: undefined }` goes back
-to detection, `{ fetch: undefined }` back to the global — while `headers` and `query` merge
-instead of replacing.
+Any other field is forwarded to `fetch` unchanged. A request's option wins over the client's, and
+an explicit `undefined` on the request clears the client's value. `headers` and `query` merge
+instead, the request winning on a shared key.
 
-The request target itself can be a `string` or a `URL` — whatever you already have on hand:
-
-```ts
-await air.get(new URL('/users/1', 'https://api.example.com'))
-```
-
-A `URL` is already absolute, so `baseURL` is skipped for it, same as for an absolute string.
+The request target is a `string` or a `URL`. A `URL` is absolute, so `baseURL` is ignored for it.
 
 ### Runtime-specific options
 
-Some runtimes extend `RequestInit` with their own fields — Next.js has `next: { revalidate }`,
-Cloudflare Workers has `cf`, undici has `dispatcher`. `air` forwards them to `fetch` untouched,
-but `AirOptions` does not list them, so an object literal carrying one is a compile error.
-Two ways through:
+Next.js (`next`), Cloudflare Workers (`cf`) and undici (`dispatcher`) extend `RequestInit` with
+their own fields. `air` forwards them, but an object literal carrying an undeclared field does not
+compile. Two ways through:
 
 ```ts
-// 1. The runtime augments RequestInit globally. Next.js does exactly this, so `next` already
-//    typechecks in a Next app with nothing to do — AirOptions extends RequestInit.
+// 1. The runtime augments RequestInit globally. Next.js does, so this compiles in a Next app:
 await api.get('/users', { next: { revalidate: 60 } })
 
-// 2. Augment AirOptions yourself, once, in any .d.ts of your project. It is an interface, so
-//    it is open:
+// 2. Augment AirOptions once, in any .d.ts of your project:
 declare module '@korastd/air' {
   interface AirOptions {
     cf?: { cacheTtl?: number }
@@ -100,17 +84,13 @@ declare module '@korastd/air' {
 await api.get('/users', { cf: { cacheTtl: 60 } })
 ```
 
-There is no index signature on `AirOptions` on purpose: it would take excess-property checking
-down with it, and `parse: 'respons'` would start compiling.
+`AirOptions` has no index signature by design, so a typo such as `parse: 'respons'` stays an error.
 
-### Fetch
+## Fetch
 
-`air` calls the global `fetch` unless you hand it another one. The reason to hand it another
-one is server-side rendering: SvelteKit, Remix, Astro and friends give each request its own
-`fetch`, and it is not a detail — it carries the incoming request's cookies and headers,
-resolves relative URLs against the current page, and answers a request to your own app by
-invoking the route handler directly rather than making a real HTTP round-trip back to
-yourself.
+On the server, frameworks hand each incoming request its own `fetch`. It carries that request's
+cookies, resolves relative URLs against the current page, and calls same-app routes directly.
+Pass it as an option; it merges like any other.
 
 ```ts
 // src/lib/api.ts
@@ -119,44 +99,31 @@ export const createApi = (fetch: typeof globalThis.fetch) => air.create({ fetch 
 // src/routes/+page.server.ts
 export async function load({ fetch }) {
   const api = createApi(fetch)
-  return { user: await api.get<User>('/api/me') } // relative, cookies attached, no round-trip
+  return { user: await api.get<User>('/api/me') }
 }
 ```
 
-It merges like any other option, so a client can carry it while a single request overrides it,
-and it can arrive per request instead:
+`Fetch` is `(url: string, init: RequestInit) => Promise<Response>`, so the global, a framework
+wrapper, an instrumented fetch and a test double are all assignable:
 
 ```ts
-await api.get('/api/me', { fetch })
-```
-
-The type is deliberately loose — anything callable as `(url, init) => Promise<Response>`
-qualifies, including the global itself, a framework's wrapper, an instrumented fetch that
-logs, and a test double:
-
-```ts
-const calls: string[] = []
-const recorded = air.create({
+const api = air.create({
   fetch: (url, init) => {
-    calls.push(url)
-    return globalThis.fetch(url, init)
+    console.log(init.method, url)
+    return fetch(url, init)
   },
 })
 ```
 
-Leave the option off in the browser and on any client-side navigation — the global `fetch` is
-already the right one there.
+## Timeouts
 
-### Timeouts
-
-There is no `timeout` option, because the platform already has one:
+Use the platform's:
 
 ```ts
 await api.get('/users', { signal: AbortSignal.timeout(5000) })
 ```
 
-To combine a timeout with your own cancellation, compose the signals with `AbortSignal.any`
-(Node 20.3+, so every version in the supported range but the first three patches of 20):
+Combine with your own cancellation via `AbortSignal.any` (Node 20.3+):
 
 ```ts
 await api.get('/users', {
@@ -164,45 +131,21 @@ await api.get('/users', {
 })
 ```
 
-`air` forwards `signal` to `fetch` untouched, so the abort covers the whole request,
-including a slow body download.
-
-To give every request on a client the same budget, pass a **function**. `air` calls it once
-per request, so each one gets its own signal:
+For a client-wide budget, pass a function. It runs once per request, so each request gets its
+own signal:
 
 ```ts
 const api = air.create({ signal: () => AbortSignal.timeout(5000) })
 ```
 
-Do not write the signal itself into a client's defaults. It is a single instance shared by
-every request that client will ever make, and its clock starts at `create()` time:
+Do not write a signal instance into a client's defaults. A signal is single-use, so a shared
+`AbortSignal.timeout(5000)` fails every request after its first five seconds. A request-level
+`signal` replaces the client's; returning `undefined` from the function opts one request out.
 
-```ts
-// Wrong: five seconds after this line, every request fails instantly without being sent.
-const api = air.create({ signal: AbortSignal.timeout(5000) })
-```
+## Retries
 
-A fired signal stays fired, and `fetch` rejects an already-aborted one before it sends
-anything — so the client works for five seconds and is then permanently broken. This is the
-same trap as a static `Authorization` header, and it has the same fix: a function.
-
-A request-level `signal` replaces the client's rather than combining with it, so compose the
-two yourself when you want both:
-
-```ts
-await api.get('/users', {
-  signal: () => AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
-})
-```
-
-Returning `undefined` from the function opts a single request out of the client's budget —
-for one endpoint that is legitimately slow, say.
-
-### Retries
-
-`air` ships no retry helper. A loop in your own code is shorter than any API we could offer
-for it, and it has something a generic helper cannot have: your `AbortSignal` in scope, so
-it can tell a transient failure apart from a request you cancelled on purpose.
+Write the loop. It is shorter than any option, and it can see your `AbortSignal`, which is how
+a cancellation is told apart from a transient failure.
 
 ```ts
 import air, { isAirError } from '@korastd/air'
@@ -220,52 +163,31 @@ async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal, attempts 
     }
   }
 }
-```
 
-Build the request inside the callback so each attempt gets a fresh signal — a signal that has
-already fired stays fired:
-
-```ts
 await withRetry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), signal)
 ```
 
-### Headers
+Build the request inside the callback so each attempt gets a fresh signal. See
+[`examples/retry.mjs`](./examples/retry.mjs) for `429` and `Retry-After`.
 
-`headers` merges with the client's defaults, the request winning on a shared key — same rule
-for every `HeadersInit` shape (`Headers`, a plain object, or an array of tuples).
+## Headers
 
-To _remove_ an inherited header rather than replace it, set it to `null`:
+Headers merge over the client's, the request winning on a shared key, for every `HeadersInit`
+shape. In the record form, `null` or `undefined` removes an inherited header:
 
 ```ts
 const api = air.create({ headers: { Authorization: `Bearer ${token}` } })
 
-await api.get('/public', { headers: { Authorization: null } }) // sent without it
-const anonymous = api.create({ headers: { Authorization: null } }) // and so is every call on this
+await api.get('/public', { headers: { Authorization: null } })
+const anonymous = api.create({ headers: { Authorization: null } })
 ```
 
-`''` is not the same thing — it sends an empty header — and a function can only ever add, so
-`null` is the only way to say it. `undefined` does the same, so
-`{ Authorization: signedIn ? token : undefined }` works as written.
-
-This is the one place the shapes are not uniform: removal is for the plain-object form only,
-because a `Headers` instance has no way to represent "delete". Setting a header behaves the
-same across all three.
-
-A plain object is evaluated once, when you write it. That is a problem for anything that
-changes after the client is created — a bearer token that gets refreshed, for instance:
-
-```ts
-// Wrong: the token at create() time is the token forever.
-const api = air.create({ headers: { Authorization: `Bearer ${getToken()}` } })
-```
-
-Pass a function instead, and `air` calls it on every request:
+A plain object is evaluated once. For a value that changes, such as a refreshed token, pass a
+function. It runs on every request and may be async:
 
 ```ts
 const api = air.create({ headers: () => ({ Authorization: `Bearer ${getToken()}` }) })
 ```
-
-It can be async too, for a refresh that needs a network round trip:
 
 ```ts
 const api = air.create({
@@ -273,36 +195,21 @@ const api = air.create({
 })
 ```
 
-The function runs once per request and `air` does not deduplicate it, so an async one that
-actually hits the network will do so on every call — five concurrent requests mean five
-refreshes. Deduplicating is your job, and it is the usual single-flight promise:
+An async header function is not deduplicated. Single-flight it yourself if it hits the network:
 
 ```ts
 let inFlight: Promise<string> | null = null
-
 const token = () => (inFlight ??= refresh().finally(() => (inFlight = null)))
-
-const api = air.create({
-  headers: async () => ({ Authorization: `Bearer ${await token()}` }),
-})
 ```
 
-A header function on a client and a plain object (or another function) on a request, or on a
-client derived with `create()`, combine the same way static headers do — nothing is resolved,
-or frozen, until the request that actually needs it.
+## Refreshing a token on a 401
 
-### Refreshing on a 401
-
-A header function keeps a token fresh _before_ a request goes out. It cannot react to one that
-comes back rejected — by then the request has already been sent. `air` has no response hook for
-that, and does not need one: a wrapper around [`fetch`](#fetch) sees the response, so the whole
-pattern is an ordinary function.
+A header function runs before the request; it cannot see a 401. A `fetch` wrapper can:
 
 ```ts
 let access = getToken()
 let inFlight: Promise<string> | null = null
 
-// One renewal at a time, however many requests hit a 401 at once.
 const renew = () =>
   (inFlight ??= refreshToken()
     .then((token) => (access = token))
@@ -315,7 +222,7 @@ const api = air.create({
     const response = await fetch(url, init)
     if (response.status !== 401) return response
 
-    response.body?.cancel() // the 401 body goes unread; release the connection
+    response.body?.cancel()
     const token = await renew()
     const headers = new Headers(init.headers)
     headers.set('Authorization', `Bearer ${token}`)
@@ -324,37 +231,27 @@ const api = air.create({
 })
 ```
 
-Four details worth getting right:
+- Deduplicate the renewal, or concurrent 401s race and the last one wins.
+- Retry once. A token that is still rejected surfaces as an `AirError`.
+- `init.signal` is the caller's, so the retry shares the original deadline.
+- A `ReadableStream` body cannot be replayed. Other body types retry fine.
 
-- **Deduplicate the renewal.** Five concurrent requests each get a 401 and each call `renew` —
-  without the `inFlight` promise that is five renewals racing, and the last one to land wins.
-  Same problem and same fix as an async header function, above.
-- **Re-send once, never loop.** The wrapper sends the request again and returns whatever comes
-  back, so a token that is still rejected surfaces as a normal `AirError` instead of spinning.
-- **The signal rides along.** `init` already carries the caller's `signal`, so the retry is
-  covered by it — and spends the _same_ budget. `signal: () => AbortSignal.timeout(5000)` gives
-  the original request, the renewal and the retry five seconds between them, not five each; a
-  renewal slower than what is left aborts the retry, which is the point of a deadline.
-- **A `ReadableStream` body cannot be replayed.** It was consumed by the first attempt, so the
-  retry fails at the transport. Strings, `FormData`, `URLSearchParams` and `Blob`s are all
-  re-readable and retry fine — a streaming upload has to handle its own 401.
+The same shape covers logging, metrics and error translation. Wrappers compose.
 
-The same shape covers the rest of what a response hook would be for: logging, metrics, a
-translated error. It is one function you already know how to write, and it composes — the
-wrapper can wrap another wrapper.
-
-### Query
-
-Existing search params are preserved byte-for-byte and new ones are appended after them;
-`undefined` and `null` are dropped, and arrays produce repeated keys.
+## Query
 
 ```ts
 air.get('/search?q=air', { query: { tags: ['a', 'b'], page: 2, cursor: null } })
 // /search?q=air&tags=a&tags=b&page=2
 ```
 
-`query` also takes a `URLSearchParams` or an array of `[key, value]` tuples, for when the
-params came from somewhere else and you already hold one:
+- The existing search string is kept unchanged; new params are appended after it.
+- `undefined` and `null` are dropped. `false`, `0` and `''` are kept.
+- An array repeats the key. An empty array adds nothing.
+- Objects and `Date` are compile errors. Serialize them yourself: `{ since: date.toISOString() }`.
+- Declare a record's type with `type`, not `interface`.
+
+`query` also takes a `URLSearchParams` or a tuple list, keeping every value of a repeated key:
 
 ```ts
 await api.get('/search', { query: new URL(location.href).searchParams })
@@ -366,105 +263,60 @@ await api.get('/search', {
 })
 ```
 
-All three merge with a client's default `query` the same way. Repeated keys survive the
-conversion — `?tag=a&tag=b` stays both — which is the reason to hand the `URLSearchParams`
-over rather than convert it yourself: `Object.fromEntries` keeps only the last one.
+For a different serialization convention, build the params yourself and pass the result.
 
-Only primitives and arrays of primitives are allowed. Objects and `Date`s are a compile
-error rather than a silent `[object Object]` — serialize them yourself
-(`{ since: date.toISOString() }`). If you want a different convention for those — bracket
-notation, JSON-encoded values — write the serializer and hand `air` its output as tuples or
-a `URLSearchParams`; it merges like any other query.
+## Body
 
-Type your params with `type`, not `interface`: TypeScript gives object type aliases an
-implicit index signature, and interfaces never get one, so an `interface` is not assignable
-to `Query`.
+Plain objects and arrays are JSON-encoded with `Content-Type: application/json` unless one is
+set. `FormData`, `URLSearchParams`, `Blob`, `File`, `ArrayBuffer`, typed arrays, `ReadableStream`
+and strings are sent as-is. `FormData` never gets a `Content-Type`, even one you set, so the
+runtime can write the multipart boundary. A `ReadableStream` gets `duplex: 'half'`, which `fetch`
+requires. `GET` and `HEAD` never send a body.
 
-### Body
+## Response
 
-Plain objects and arrays are JSON-stringified and get `Content-Type: application/json`
-unless you set one yourself. `FormData`, `URLSearchParams`, `Blob`, `File`, `ArrayBuffer`,
-typed arrays, `ReadableStream` and strings are passed through untouched — in particular
-`FormData` never gets a `Content-Type`, even one you set yourself, so the runtime can set
-the multipart boundary. `GET` and `HEAD` never send a body.
+The body is parsed from the response `Content-Type`:
 
-A `ReadableStream` body additionally gets `duplex: 'half'`, which `fetch` requires in order
-to stream a request at all. Pass your own `duplex` to override it.
+| Content type                                                     | Resolves to      |
+| ---------------------------------------------------------------- | ---------------- |
+| `application/json`, `*+json`                                     | parsed JSON      |
+| `text/*`                                                         | `string`         |
+| `text/event-stream`, `application/x-ndjson`, `application/jsonl` | `ReadableStream` |
+| anything else                                                    | `Blob`           |
 
-### Response
+A `204` or an empty body resolves to `null`. Streaming types are returned unread because they
+may never end. `application/octet-stream` is a `Blob`.
 
-Parsed from the response `Content-Type`: JSON for `application/json` and `+json` suffixes,
-text for `text/*`, a `Blob` otherwise. `204` and empty bodies resolve to `null`.
-
-Three content types are handed back **unread**, as a `ReadableStream`, because they are
-streams by definition and reading one to completion means waiting for an endpoint that is
-designed never to close:
-
-| Content type                                | Resolves to      |
-| ------------------------------------------- | ---------------- |
-| `text/event-stream` (server-sent events)    | `ReadableStream` |
-| `application/x-ndjson`, `application/jsonl` | `ReadableStream` |
-
-`application/octet-stream` is **not** one of them, despite the name — it is a `Blob` like
-any other binary payload.
-
-`parse` overrides the detection — `'json'`, `'text'`, `'blob'`, `'arrayBuffer'`, or
-`'stream'` for the body unread as a `ReadableStream`:
+`parse` overrides detection:
 
 ```ts
 const csv = await api.get<string>('/export', { parse: 'text' })
 const body = await api.get('/download', { parse: 'stream' }) // ReadableStream<Uint8Array>
 ```
 
-`parse: 'stream'` is the one mode that takes **no** type argument, because it is the one
-whose type is already known — writing `api.get<User>('/download', { parse: 'stream' })` is a
-compile error rather than a `ReadableStream` wearing a `User`'s name. Every other mode still
-takes the `<T>` you assert, since only you know what the endpoint returns.
-
-For the same reason, `parse: 'stream'` is a per-call shape and not a client default —
-`air.create({ parse: 'stream' })` is a compile error. A client sends requests to many
-endpoints; "every response on this client is an unread stream" is not a thing to mean.
-
-To build the options as a value rather than a literal, the type is exported:
+`parse: 'stream'` takes no type argument, since the type is known, and is not accepted as a client
+default. To build the options as a value, use `StreamOptions`:
 
 ```ts
 import type { StreamOptions } from '@korastd/air'
 
 const download: StreamOptions = { parse: 'stream' }
-const body = await api.get('/big.zip', download)
 ```
 
-It overrides in both directions, so a finite SSE response can still be buffered:
+## Raw
 
-```ts
-const log = await api.get<string>('/events', { parse: 'text' })
-```
-
-### Raw
-
-A call resolves to the body, which is the point — but a `Link` header, an `ETag`, a rate
-limit or a `201` vs `200` lives on the response, not in it. `client.raw` is the same client,
-resolving to both halves:
+`client.raw` resolves to the body and the response, for headers, status and the final URL:
 
 ```ts
 const { data, response } = await api.raw.get<User[]>('/users')
 
-data[0].name
 response.headers.get('link')
 response.status
 ```
 
-`raw` carries every shortcut, is callable directly, and parses exactly like the plain
-client — `parse` and every other option behave the same. It only adds the response; it
-never changes the body.
-
-Which is also why `response` is there for its headers, status and URL, not for its body: a
-body can be read once, and `data` is that read. `response.json()` on what you get back
-throws, because `response.bodyUsed` is already `true`.
-
-Unless you asked for the body unread, in which case `data` **is** `response.body` — the same
-stream under two names, not two copies. Reading either one consumes the other. Pairing them
-is the point: the header tells you how to read the stream.
+`raw` has every shortcut and parses exactly like the plain client. The response's body has been
+read into `data`, so `response.bodyUsed` is `true`. With `parse: 'stream'`, `data` is
+`response.body` itself, which pairs the stream with the headers that describe it:
 
 ```ts
 const { data, response } = await api.raw.get('/big.zip', { parse: 'stream' })
@@ -481,15 +333,13 @@ for (;;) {
 }
 ```
 
-`getReader()` rather than `for await (const chunk of data)`: async iteration over a
-`ReadableStream` works in Node and Chrome, and throws in Safari and Firefox. A reader loop
-works everywhere `air` claims to.
+Use `getReader()` rather than `for await`: async iteration over a `ReadableStream` is not
+available in Safari or Firefox.
 
-A non-2xx still throws, from both clients. The failed response is `error.response`.
+## Errors
 
-### Errors
-
-Non-2xx responses, network failures, timeouts and aborts all throw an `AirError`.
+Every failure throws an `AirError`: a non-2xx status, a network error, a timeout, an abort, or
+an unreadable body.
 
 ```ts
 import { isAirError } from '@korastd/air'
@@ -498,69 +348,61 @@ try {
   await api.get('/users/1')
 } catch (error) {
   if (isAirError(error)) {
-    error.status // 404
-    error.statusText // 'Not Found'
+    error.status // 404; undefined when no response arrived
+    error.statusText
     error.data // parsed error body, if any
-    error.request // { url, method, headers, options } — headers as actually sent
-    error.response // the raw Response, for escape hatches
+    error.request // { url, method, headers, options }, headers as sent
+    error.response // the Response; its body is already read into data
     error.cause // the underlying failure, for network errors and aborts
   }
 }
 ```
 
-`error.response` is there for its status, headers and URL. Its body has already been read
-into `error.data`, so `response.bodyUsed` is `true` and reading it again throws — same as the
-`response` on [`raw`](#raw). If you need the error body's bytes verbatim, a [`fetch`](#fetch)
-wrapper sees the response before `air` does.
+The message ends in `timed out` for `AbortSignal.timeout`, `was aborted` for `abort()`, and
+`failed: <reason>` for `abort(reason)` or a network error.
 
-The message names the two reasons the platform issues — `timed out` for `AbortSignal.timeout`
-and `was aborted` for a plain `abort()`. A custom `abort(reason)` is reported as
-`failed: <reason>`, and the reason itself is `error.cause`.
+`isAirError` checks a `Symbol.for('air.error')` brand, so it works across two copies of the
+package where `instanceof` would not.
 
-`isAirError` matches on a `Symbol.for('air.error')` brand rather than `instanceof`, so it
-still works when an app ends up with two copies of the package loaded.
-
-### Types
+## Types
 
 ```ts
 air.get<User[]>('/users') // Promise<User[]>
-air.get('/users') // Promise<unknown> — never `any`
-air.raw.get<User[]>('/users') // Promise<AirResponse<User[]>> — { data, response }
+air.get('/users') // Promise<unknown>
+air.raw.get<User[]>('/users') // Promise<AirResponse<User[]>>
 ```
+
+`<T>` is an assertion, not a check. A `204` resolves to `null` even though the signature says `T`.
 
 ## Examples
 
-Every recipe above exists as a runnable file in [`examples/`](./examples). They start a local
-server, make real requests against the built package, and assert what they claim — so they are
-also the integration lane CI runs on every supported Node, and none of them can quietly rot.
+Each recipe above is a runnable file in [`examples/`](./examples). They start a local server,
+run the built package over real `fetch`, and assert what they show. CI runs them on every
+supported Node version.
 
-| File                                      | What it shows                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| [`ssr.mjs`](./examples/ssr.mjs)           | A per-request `fetch` from a framework, carrying its own cookies        |
-| [`refresh.mjs`](./examples/refresh.mjs)   | Refreshing a token on a 401, single-flighted across concurrent requests |
-| [`retry.mjs`](./examples/retry.mjs)       | Retry that honours `Retry-After` and never retries a cancellation       |
-| [`progress.mjs`](./examples/progress.mjs) | Download and upload progress                                            |
-| [`sse.mjs`](./examples/sse.mjs)           | Server-sent events — and when to use `EventSource` instead              |
-| [`testing.mjs`](./examples/testing.mjs)   | Faking the transport, without a global stub                             |
-| [`platform.mjs`](./examples/platform.mjs) | The behaviours only a real socket can confirm                           |
+| File                                      | Shows                                                 |
+| ----------------------------------------- | ----------------------------------------------------- |
+| [`ssr.mjs`](./examples/ssr.mjs)           | A per-request `fetch` carrying its own cookies        |
+| [`refresh.mjs`](./examples/refresh.mjs)   | Refreshing a token on a 401, single-flighted          |
+| [`retry.mjs`](./examples/retry.mjs)       | Retry honoring `Retry-After`, never on a cancellation |
+| [`progress.mjs`](./examples/progress.mjs) | Download and upload progress                          |
+| [`sse.mjs`](./examples/sse.mjs)           | Server-sent events, and when `EventSource` is enough  |
+| [`testing.mjs`](./examples/testing.mjs)   | Faking the transport without a global stub            |
+| [`platform.mjs`](./examples/platform.mjs) | Behaviors only a real socket can confirm              |
 
 ```bash
-pnpm examples   # build, then run them all
+pnpm examples
 node examples/retry.mjs
 ```
 
 ## Development
 
 ```bash
-pnpm check      # what CI runs: format check, lint, typecheck, tests, build
-pnpm build      # tsdown → dist/ (ESM + .d.ts)
-pnpm test       # vitest run — pnpm test:watch to keep it running
+pnpm check      # format check, lint, typecheck, tests, build
+pnpm test:watch
 pnpm examples   # build, then run examples/ against a local server
-pnpm lint       # eslint . --max-warnings 0
-pnpm format     # prettier --write .
 pnpm demo       # build, then run examples/demo.mjs against real endpoints
 ```
 
-See [CHANGELOG.md](./CHANGELOG.md) for what changed in each release, and
-[CONTRIBUTING.md](./CONTRIBUTING.md) for the design philosophy and the behavior rules behind
-these choices.
+See [CHANGELOG.md](./CHANGELOG.md) for releases and [CONTRIBUTING.md](./CONTRIBUTING.md) for
+the design rules.

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import air from '../src/index.js'
 import { json, mockFetch } from './mock.js'
 
-// Captures the init handed to fetch, for the fields a `Request` does not expose.
 function initSpy() {
   let seen: RequestInit | undefined
   vi.stubGlobal(
@@ -56,8 +55,6 @@ describe('body', () => {
     )
   })
 
-  // The one header air overrides rather than defers to: no literal a caller could write is
-  // ever a valid multipart Content-Type, because the boundary is generated at send time.
   it('discards a caller-supplied content-type for FormData', async () => {
     const requests = mockFetch()
     const form = new FormData()
@@ -94,8 +91,6 @@ describe('body', () => {
     await expect(requests[0]!.arrayBuffer()).resolves.toHaveProperty('byteLength', 3)
   })
 
-  // fetch refuses a ReadableStream body without it. A mock does not enforce that, which is
-  // how this shipped broken once; examples/platform.mjs pins it against a real socket.
   it('marks a streaming body half-duplex, which fetch requires', async () => {
     const seen = initSpy()
     await air.post('https://api.test/upload', { body: emptyStream() })

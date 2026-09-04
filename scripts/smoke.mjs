@@ -1,9 +1,5 @@
-// Smoke-tests the BUILT artifact in dist/, which the vitest suite never touches —
-// it imports from src/. This catches a broken build (bad bundling, missing export)
-// that a green test run would happily hide.
-//
-// Deliberately plain Node with no test runner and no syntax past Node 20, because
-// it doubles as the check that `engines: node >=20` is true rather than aspirational.
+// Smoke-tests the built `dist/` on plain Node, with no test runner and no syntax newer than
+// Node 20, so it doubles as the check that `engines` is accurate.
 //
 // Run: pnpm build && node scripts/smoke.mjs
 
@@ -76,10 +72,7 @@ const { data, response } = await air.raw.get('https://x.test/a')
 assert.deepEqual(data, { ok: true }, 'raw still parses the body')
 assert.equal(response.headers.get('x-total'), '7', 'exposes response headers')
 
-// parse: 'stream' hands back the body unread, and it is the response's own body —
-// one stream under two names. Checked here rather than only in the test suite
-// because this runs on the oldest Node `engines` claims, against that version's
-// own fetch implementation.
+// parse: 'stream' returns the response's own body unread.
 stub(() => json({ ok: true }))
 const streamed = await air.raw.get('https://x.test/a', { parse: 'stream' })
 assert.ok(streamed.data instanceof ReadableStream, 'stream mode returns a ReadableStream')
@@ -91,8 +84,7 @@ assert.deepEqual(
   'the stream carries the body',
 )
 
-// An injected fetch replaces the global one, the way a server framework's
-// per-request fetch does
+// An injected fetch replaces the global one
 stub(() => {
   throw new Error('the global fetch should not have been called')
 })
@@ -111,8 +103,7 @@ assert.deepEqual(
 assert.equal(injected.url, '/relative/path', 'passes a relative url through untouched')
 assert.equal(injected.init.fetch, undefined, 'does not leak the option into the init')
 
-// A signal function is resolved per request, so a client default is a budget per
-// request rather than one shared signal that dies for good the first time it fires
+// A signal function is resolved per request
 stub(() => json({}))
 const timed = create({ signal: () => AbortSignal.timeout(1000) })
 await timed.get('https://x.test/a')
@@ -121,14 +112,14 @@ await timed.get('https://x.test/b')
 assert.ok(first instanceof AbortSignal, 'resolves the signal function')
 assert.notEqual(first, seen.init.signal, 'mints a fresh signal per request')
 
-// A null header removes one a client default set, rather than sending "null"
+// A null header removes an inherited one
 stub(() => json({}))
 const authed = create({ headers: { Authorization: 'Bearer t', 'X-Keep': 'yes' } })
 await authed.get('https://x.test/public', { headers: { Authorization: null } })
 assert.equal(seen.request.headers.get('authorization'), null, 'null drops the header')
 assert.equal(seen.request.headers.get('x-keep'), 'yes', 'and leaves the others alone')
 
-// query takes the two shapes a caller is likely to already hold, repeated keys intact
+// query accepts URLSearchParams and tuples, repeated keys intact
 stub(() => json({}))
 await air.get('https://x.test/s', { query: new URLSearchParams('tag=a&tag=b') })
 assert.equal(seen.url, 'https://x.test/s?tag=a&tag=b', 'accepts a URLSearchParams')

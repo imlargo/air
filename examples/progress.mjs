@@ -1,9 +1,7 @@
-// Download and upload progress
+// Download and upload progress.
 //
-// The biggest apparent gap against axios and ky, and it is a documentation gap rather than a
-// capability one. What axios spends an option, a callback, a `total` and a rate estimate on
-// is, here, a function you write once and reuse — because `fetch` is an option, so anything
-// that reads a request or a response is a wrapper you already know how to write.
+// Download: wrap `fetch` and count bytes through a `TransformStream`; air still parses the
+// result. Upload: hand air a counting `ReadableStream` as the body.
 //
 // Run: node examples/progress.mjs
 
@@ -23,10 +21,7 @@ const server = await serve(async (req, res) => {
     'content-type': 'text/plain',
     'content-length': String(PAYLOAD.length),
   })
-  // Spaced out, so the chunks arrive separately. Worth knowing before you build a UI on
-  // this: chunk boundaries are not yours to choose. The runtime and the kernel coalesce
-  // freely, and over localhost three back-to-back writes usually arrive as one — this
-  // server sleeps between them precisely because otherwise progress fires once, at 100%.
+  // Spaced out so the chunks arrive separately; over localhost, back-to-back writes coalesce.
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   res.write(PAYLOAD.slice(0, 20_000))
   await sleep(15)
@@ -37,14 +32,11 @@ const server = await serve(async (req, res) => {
 
 // --- the recipe -------------------------------------------------------------------------
 
-// Wrapping the *response* keeps air's parsing, status and headers intact: what comes back
-// from the wrapper is still a Response, so air reads it exactly as it would have.
 const withDownloadProgress = (report) => async (url, init) => {
   const response = await fetch(url, init)
   if (!response.body) return response
 
-  // `content-length` is absent on a chunked response, so total is 0 and a caller showing a
-  // percentage has to handle that. Report it rather than invent a number.
+  // `content-length` is absent on a chunked response; report 0 rather than invent a total.
   const total = Number(response.headers.get('content-length')) || 0
   let loaded = 0
 
@@ -61,8 +53,6 @@ const withDownloadProgress = (report) => async (url, init) => {
   return new Response(counted, response)
 }
 
-// Upload needs no library involvement at all: count the bytes on the way past and hand air
-// the stream. A ReadableStream body gets `duplex: 'half'` set for you.
 function counted(body, report) {
   const bytes = new TextEncoder().encode(body)
   let sent = 0
@@ -95,8 +85,6 @@ assert.equal(
   'content-length survived the wrapper',
 )
 
-// The raw client still works through it, which is the check that the wrapper did not quietly
-// replace the response with something less useful.
 const { response } = await api.raw.get(`${server.url}/big.txt`)
 assert.equal(response.headers.get('content-type'), 'text/plain', 'headers intact')
 

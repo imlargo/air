@@ -1,15 +1,5 @@
-// Runs every example against the BUILT dist/, in its own process.
-//
-// This is the integration lane. The vitest suite in `test/` mocks `fetch`, and a mock agrees with
-// whatever the person who wrote it assumed — every bug this library has shipped got through
-// exactly that gap. The examples talk to a real socket, so they disagree when it matters.
-//
-// Each file is standalone (`node examples/retry.mjs` works on its own) and self-verifying:
-// it asserts, prints one line, and exits non-zero if anything is off. A separate process per
-// file so one leaked server or unhandled rejection cannot mask the next.
-//
-// `_server.mjs` is the shared harness, not an example. `demo.mjs` is excluded deliberately:
-// it makes real network requests to third parties, so it cannot gate a build.
+// Runs every example in its own process against the built `dist/`. Skips `_*.mjs` (shared
+// helpers) and `demo.mjs` (third-party network).
 //
 // Run: pnpm examples
 

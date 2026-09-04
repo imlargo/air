@@ -15,9 +15,7 @@ import type {
   SignalSource,
 } from './types.js'
 
-// V8-only (Node, Chrome, Edge); guarded at the call site. Declared here rather than through
-// @types/node, which would leak Node-only globals into a codebase that targets the browser
-// and edge runtimes just as much.
+// V8-only; declared here rather than depending on @types/node.
 declare global {
   interface ErrorConstructor {
     captureStackTrace?(
@@ -33,9 +31,8 @@ const resolveHeaders = async (source?: HeaderSource): Promise<HeaderInit | undef
 const resolveSignal = (source?: SignalSource | null): AbortSignal | null | undefined =>
   typeof source === 'function' ? source() : source
 
-// The record form is the one shape that can say "remove": `null` and `undefined` delete the
-// key instead of being sent as the strings "null" and "undefined", which is what the Headers
-// constructor would do with them. A Headers instance or a tuple list can only set.
+// Records are applied key by key: the Headers constructor would send `null` and `undefined`
+// as the strings "null" and "undefined".
 function applyHeaders(target: Headers, source?: HeaderInit): void {
   if (!source) return
 
@@ -52,10 +49,7 @@ function applyHeaders(target: Headers, source?: HeaderInit): void {
   }
 }
 
-// Always a closure, never a resolved Headers: each source is evaluated on the request that
-// needs it, not when a client is created or derived. Resolving here would freeze a token at
-// create() time — the bug the function form exists to fix — one layer removed. A chain of
-// create() calls nests these without ever evaluating one early.
+// A closure, so neither source is resolved until a request is made.
 function mergeHeaders(base?: HeaderSource, extra?: HeaderSource): () => Promise<Headers> {
   return async () => {
     const headers = new Headers()
@@ -65,18 +59,13 @@ function mergeHeaders(base?: HeaderSource, extra?: HeaderSource): () => Promise<
   }
 }
 
-// Request wins on a shared key. Both sides are folded to the record first, because a
-// URLSearchParams spreads to nothing.
+// Folded to records first: spreading a URLSearchParams yields {}.
 function mergeQuery(base?: Query, extra?: Query): Query | undefined {
   if (!base || !extra) return base ?? extra
   return { ...toQueryRecord(base), ...toQueryRecord(extra) }
 }
 
-// Scalars are last-wins, so an explicit `undefined` on the request opts out of a client
-// default (`baseURL: undefined`, `fetch: undefined`, `parse: undefined`); headers and query
-// combine instead of replacing. Every request passes through here exactly once, with or
-// without per-request options, so nothing reaches request() un-normalised — a `null` header
-// written straight into create()'s defaults included.
+// Every request passes through here exactly once, so request() only ever sees merged options.
 function merge(base: AnyOptions, extra: AnyOptions = {}): AnyOptions {
   return {
     ...base,
@@ -86,8 +75,6 @@ function merge(base: AnyOptions, extra: AnyOptions = {}): AnyOptions {
   }
 }
 
-// `abort(reason)` lets a caller pass anything, so only the two platform-issued reasons are
-// named; a custom one is reported as the failure it describes.
 function reasonFor(error: unknown, fallback: string): string {
   const name = error instanceof Error ? error.name : ''
   if (name === 'TimeoutError') return 'timed out'
@@ -98,19 +85,15 @@ function reasonFor(error: unknown, fallback: string): string {
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-// Every throw goes through here, so the stack is trimmed of request()'s own frame and starts
-// at the caller's call site rather than inside air.
 function fail(message: string, info: AirRequest, init?: AirErrorInit): never {
   const error = new AirError(message, info, init)
   Error.captureStackTrace?.(error, request)
   throw error
 }
 
-// Always resolves to both halves; the two clients differ only in which one they hand back.
-// One code path through a request, so `raw` cannot drift from the plain client.
 async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> {
-  // `send` defaults inside the call, not at module load, so a polyfill installed after
-  // import — or a test stubbing the global — is what gets called.
+  // Defaulted here rather than at module scope, so a `fetch` stubbed or polyfilled after
+  // import is the one used.
   const {
     baseURL,
     query,
@@ -142,18 +125,15 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
     }
   }
 
-  // Built after the headers are resolved and the body has had its say, so an error reports
-  // what was actually sent — `options.headers` may still be an unevaluated function.
   const info: AirRequest = { url, method: verb, headers: requestHeaders, options }
 
-  // Resolved last, immediately before the send, so a source that mints
-  // `AbortSignal.timeout(ms)` spends that budget on the request rather than on an async
-  // header function that had to refresh a token first.
+  // After the headers, so an `AbortSignal.timeout()` budget is not spent on an async header
+  // function.
   const signal = resolveSignal(signalSource)
 
   let response: Response
   try {
-    // air's duplex first, so a caller-supplied one in `init` wins.
+    // `init` after `duplex`, so a caller's value wins.
     response = await send(url, {
       ...(duplex ? { duplex } : {}),
       ...init,
@@ -168,8 +148,6 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
   }
 
   if (!response.ok) {
-    // Same detection as the success path. An error body that fails to parse leaves `data`
-    // undefined; it never turns a 500 into a parse error.
     const data = await parseResponse(response).catch(() => undefined)
     fail(`${verb} ${url} failed with ${response.status} ${response.statusText}`, info, {
       response,
@@ -185,8 +163,6 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
   }
 }
 
-// Listed once, so a verb cannot be added to one client and forgotten in the other. `make`
-// stays generic through the inference, which keeps the per-call <T> on every shortcut.
 function verbs<M>(make: (method: string) => M) {
   return {
     get: make('GET'),
@@ -199,17 +175,11 @@ function verbs<M>(make: (method: string) => M) {
   }
 }
 
-/**
- * A client with these defaults. The root export `air` is `create()` with none, so there is
- * exactly one implementation; `air.create()` and `client.create()` are this function with
- * the parent's defaults merged in.
- */
+/** Creates a client with the given defaults. `air` is `create()` with none. */
 export function create(defaults: AirOptions = {}): AirClient {
   const settle = (options?: AnyOptions, method?: string): AnyOptions =>
     method ? { ...merge(defaults, options), method } : merge(defaults, options)
 
-  // Two projections of one request(): `raw` keeps both halves, the plain client keeps the
-  // body. A shortcut pins the method; the callable form leaves it to the options.
   const raw =
     (method?: string) =>
     <T = unknown>(url: AirURL, options?: AnyOptions) =>
@@ -223,8 +193,7 @@ export function create(defaults: AirOptions = {}): AirClient {
 
   return Object.assign(data(), verbs(data), {
     raw: Object.assign(raw(), verbs(raw)),
-    // Both sides are AirOptions here, so the merge is one too. merge() is typed for the
-    // looser case it also serves: a per-request `parse: 'stream'`.
+    // Both sides are AirOptions, so the result is too; merge() is typed for the wider case.
     create: (options?: AirOptions): AirClient =>
       create(merge(defaults, options) as AirOptions),
   })

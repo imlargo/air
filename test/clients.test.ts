@@ -100,9 +100,6 @@ describe('clients', () => {
     expect(requests[0]!.url).toBe('https://api.test/public')
   })
 
-  // Defaults handed straight to the exported create() never passed through a merge before
-  // this request; the Headers constructor would have sent the string "null". Every request
-  // normalises its options exactly once, so this path is the same as every other.
   it('honours null in defaults handed straight to create()', async () => {
     const requests = mockFetch()
     const api = create({ headers: { Authorization: null, 'X-Keep': 'yes' } })
@@ -236,8 +233,6 @@ describe('clients', () => {
     await expect(api.get('https://api.test/a')).resolves.toBe('{"id":1}')
   })
 
-  // Scalars merge last-wins, so an explicit undefined is the per-request opt-out from a
-  // client default — the same rule as `baseURL: undefined` and `fetch: undefined`.
   it('lets a request opt out of a client default with an explicit undefined', async () => {
     mockFetch(() => json({ id: 1 }))
     const api = air.create({ parse: 'text' })

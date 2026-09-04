@@ -1,15 +1,7 @@
-// Server-side rendering: bring your own fetch
+// Server-side rendering with a per-request `fetch`.
 //
-// This is the one option in `air` that is not a request detail — it replaces the transport,
-// and it earns its place because on the server the global `fetch` is the *wrong* function.
-// SvelteKit's `event.fetch` (Remix, Astro and Nuxt have equivalents) forwards the incoming
-// request's cookies and headers, resolves a relative URL against the current page, and
-// answers a request to your own app by calling the route handler directly instead of making
-// a real HTTP round-trip back to the same process.
-//
-// It exists only inside a request, so nothing ambient can be reached for. A shared service
-// module can only get it if the client accepts one — which is the whole argument for the
-// option.
+// Frameworks hand each request its own `fetch`, which carries that request's cookies and
+// resolves relative URLs. It exists only inside the request, so it is passed as an option.
 //
 // Run: node examples/ssr.mjs
 
@@ -23,11 +15,10 @@ const server = await serve((req, res) => {
 
 // --- the recipe -------------------------------------------------------------------------
 
-// src/lib/api.js — shared by every route, holds no request state of its own.
+// src/lib/api.js: shared by every route, holds no request state.
 const createApi = (fetch) => air.create({ baseURL: server.url, fetch })
 
-// The framework hands you a per-request fetch. This stands in for it: it carries one
-// incoming request's cookies, and it is a different function on every request.
+// Stands in for the framework's per-request fetch: carries one request's cookies.
 const frameworkFetch = (incoming) => (url, init) => {
   const headers = new Headers(init.headers)
   headers.set('cookie', incoming.cookie)
@@ -53,8 +44,6 @@ assert.equal(
   'baseURL still applied on top of the injected fetch',
 )
 
-// It merges like every other option: a client carries one, a single call can override it,
-// and a derived client inherits it.
 const calls = []
 const instrumented = createApi((url, init) => {
   calls.push(url)
@@ -63,7 +52,6 @@ const instrumented = createApi((url, init) => {
 await instrumented.create({ headers: { 'X-Scope': 'admin' } }).get('/api/me')
 assert.equal(calls.length, 1, 'a derived client inherited the injected fetch')
 
-// And it never leaks into the init handed to the transport.
 let seen
 await air.get(`${server.url}/x`, {
   fetch: (url, init) => {

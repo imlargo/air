@@ -1,9 +1,6 @@
-// Manual playground — makes real network requests against httpbin.org and
-// jsonplaceholder. Not part of `pnpm test` (that suite mocks fetch and never
-// touches the network); this is for eyeballing the library end to end against
-// its own built output.
+// Manual check against real third-party endpoints. Not run by `pnpm examples`.
 //
-// Run: pnpm build && node examples/demo.mjs
+// Run: pnpm demo
 
 import air, { isAirError } from '../dist/index.mjs'
 
@@ -127,9 +124,7 @@ await section('retry via a plain loop — no retry option needed', async () => {
     }
   }
 
-  // httpbin picks randomly among the listed codes on each call, so this may
-  // succeed on the first attempt or need a retry or two — either is fine.
-  // A 200 from this endpoint has an empty body, hence the `null`.
+  // httpbin picks one of the listed codes at random; a 200 from it has an empty body.
   const result = await withRetry(() => air.get('https://httpbin.org/status/500,200,200'))
   console.log('eventually resolved (empty body on success):', result)
 })

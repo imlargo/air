@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import air, { AirError, isAirError } from '../src/index.js'
 import { json, mockFetch, stall } from './mock.js'
 
-// Narrows to the error a call rejects with, so the assertions below read as prose.
 async function rejection(pending: Promise<unknown>): Promise<AirError> {
   const error: unknown = await pending.then(
     () => undefined,
@@ -27,7 +26,6 @@ describe('errors', () => {
     expect(error.request.url).toBe('https://api.test/users/1')
   })
 
-  // The body is read once, into `data`. `response` is there for status, headers and URL.
   it('hands back a response whose body is already read into data', async () => {
     mockFetch(() => json({ message: 'nope' }, { status: 422 }))
     const error = await rejection(air.get('https://api.test/a'))
@@ -42,10 +40,8 @@ describe('errors', () => {
       api.post('https://api.test/a', { body: { a: 1 } }),
     )
 
-    // options.headers is still the lazy function; request.headers is the answer.
     expect(typeof request.options.headers).toBe('function')
     expect(request.headers.get('authorization')).toBe('Bearer resolved')
-    // and it includes what the body contributed
     expect(request.headers.get('content-type')).toBe('application/json')
     expect(request.method).toBe('POST')
   })
@@ -109,8 +105,6 @@ describe('errors', () => {
     await expect(pending).rejects.toThrow(/was aborted/)
   })
 
-  // `abort(reason)` takes anything, so only the platform's own reasons are named. A custom
-  // one is reported as what it says, and is still reachable on `cause`.
   it('reports a custom abort reason as the failure it describes', async () => {
     mockFetch(stall)
     const controller = new AbortController()

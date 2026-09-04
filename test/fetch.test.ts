@@ -3,8 +3,6 @@ import air from '../src/index.js'
 import type { Fetch } from '../src/index.js'
 import { json, mockFetch } from './mock.js'
 
-// Stands in for a framework's per-request fetch — SvelteKit's `event.fetch` and
-// friends: an ordinary function, reachable only from inside a request.
 function spyFetch(response: () => Response = () => json({})) {
   const calls: { url: string; init: RequestInit }[] = []
   const fetch = vi.fn((url: string, init: RequestInit) => {
@@ -77,8 +75,6 @@ describe('fetch', () => {
     expect(globalRequests).toHaveLength(1)
   })
 
-  // A relative URL is the point of a framework fetch: it resolves against the
-  // incoming request, which the global fetch has no way to know about.
   it('passes a relative url through untouched', async () => {
     const local = spyFetch()
 
@@ -87,9 +83,6 @@ describe('fetch', () => {
     expect(local.calls[0]!.url).toBe('/api/users?page=2')
   })
 
-  // SvelteKit types `event.fetch` as `typeof fetch`, as do Remix, Astro and the
-  // rest, so accepting the global's own signature is what makes them assignable.
-  // The assertion that matters here is the one the compiler makes.
   it('accepts anything shaped like the global fetch', async () => {
     const requests = mockFetch()
     const framework: Fetch = globalThis.fetch

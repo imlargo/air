@@ -12,30 +12,22 @@ the outside does not get a line here; the git history already has it.
 
 ### Fixed
 
-- **An existing search string is left byte-for-byte alone when `query` appends to it.**
-  `air.get('/s?msg=hola%20mundo', { query: { page: 2 } })` used to re-serialise the whole
-  search string through `URLSearchParams` on its way to adding `page`, so `%20` came out as `+`
-  on a param you never asked air to touch. New params are now appended after what was there,
-  and a query with nothing to append — `{}`, an empty `URLSearchParams`, all values nullish —
+- **The existing search string is no longer re-encoded when `query` appends to it.**
+  `air.get('/s?msg=hola%20mundo', { query: { page: 2 } })` used to produce `?msg=hola+mundo&page=2`.
+  New params are now appended after the existing string, and a query with nothing to append
   leaves the URL untouched.
-- **A query-only or fragment-only path no longer gets a slash inserted before it.**
-  `baseURL: 'https://api.test/v1'` + `'?page=2'` is `https://api.test/v1?page=2`, where it
-  used to be `/v1/?page=2`.
-- **The response `Content-Type` is matched case-insensitively.** A server answering
-  `Application/JSON` got a `Blob` instead of parsed JSON; media types are case-insensitive by
-  grammar, so it is JSON now.
+- **A query-only or fragment-only path is appended to `baseURL` without a slash.**
+  `'https://api.test/v1'` + `'?page=2'` is `https://api.test/v1?page=2`, not `/v1/?page=2`.
+- **`Content-Type` is matched case-insensitively.** `Application/JSON` parsed as a `Blob`.
 
 ### Changed
 
-- **`package.json` declares `types` explicitly** in its `exports` map, alongside `default`.
-  Resolution already found the sibling `.d.mts` under `moduleResolution: bundler` and
-  `node16`; this makes it true for tooling that reads the condition instead of guessing.
-- **Every request normalises its options through one path.** A `null` header written into the
-  exported `create()`'s defaults, a `URLSearchParams` client query, an explicit `undefined`
-  opting out of a client default — all behave the same whether or not the call passed any
-  options of its own. Observable only as the absence of a class of bug; the public API and every
-  documented behavior are unchanged. The types now carry TSDoc on the whole public surface, so
-  hovering an option in an editor shows what it does.
+- **`exports` declares `types` explicitly**, for tooling that reads the condition rather than
+  looking for a sibling `.d.mts`.
+- **Every request merges its options through one path.** Defaults given to the exported
+  `create()` used to reach a request without normalization. The public API is unchanged.
+- **TSDoc on the whole public surface.** Options, types and error fields show their
+  documentation on hover.
 
 ## [1.0.0] — 2026-08-19
 

@@ -47,8 +47,7 @@ describe('parsing', () => {
   })
 
   it('falls back to a Blob for a missing content type', async () => {
-    mockFetch(() => new Response('x'))
-    // Response gives a string body text/plain; strip it to model a header-less response.
+    // `new Response(string)` sets text/plain; remove it to model a missing header.
     mockFetch(() => {
       const response = new Response('x')
       response.headers.delete('content-type')
@@ -57,7 +56,6 @@ describe('parsing', () => {
     await expect(air.get('https://api.test/a')).resolves.toBeInstanceOf(Blob)
   })
 
-  // Media types are case-insensitive; a server that capitalises must not become a Blob.
   it('matches the content type case-insensitively', async () => {
     mockFetch(respond('{"ok":true}', 'Application/JSON; Charset=UTF-8'))
     await expect(air.get('https://api.test/a')).resolves.toEqual({ ok: true })
@@ -108,9 +106,6 @@ describe('parsing', () => {
     await expect(new Response(body).json()).resolves.toEqual({ id: 1 })
   })
 
-  // The rule this pins is a type-level one, so the assertions are the @ts-expect-error
-  // comments: a mode whose type is known must not accept a caller's contradicting <T>.
-  // `pnpm typecheck` covers test/, so loosening AirOptions fails the build here.
   it('refuses a generic that contradicts the stream mode', async () => {
     mockFetch(() => json({ id: 1 }))
 
@@ -136,9 +131,6 @@ describe('parsing', () => {
     )
   })
 
-  // The options on a thrown error have to be nameable and assignable by a caller using
-  // exported types only, or the narrowed AirOptions turns a public field into something you
-  // can read and never hold. This was broken once, when AirOptions was first narrowed.
   it('hands back error options a caller can name with public types', async () => {
     mockFetch(() => json({}, { status: 500 }))
     const error: unknown = await air
@@ -151,9 +143,6 @@ describe('parsing', () => {
     expect(options.parse).toBe('text')
   })
 
-  // A client-level `parse: 'stream'` would put the option out of reach of the call site's
-  // signature, which is the one place the rule above could not hold. Rather than document
-  // that hole, create() does not accept it.
   it('refuses a streaming default on a client', () => {
     // @ts-expect-error a stream is a per-call shape, not a client-wide one
     air.create({ parse: 'stream' })
@@ -177,9 +166,7 @@ describe('parsing', () => {
     await expect(air.get('https://api.test/a')).rejects.toBeInstanceOf(AirError)
   })
 
-  // The regression test for the whole change: the stream never closes, which is the
-  // entire point of SSE. Under the old `text/*` rule this call read to completion and
-  // the promise simply never settled — the test times out rather than fails.
+  // The stream never closes; buffering it would make this test time out.
   it('hands back a streaming content type unread instead of buffering it forever', async () => {
     mockFetch(sse('data: one\n\n'))
 
@@ -220,8 +207,6 @@ describe('parsing', () => {
     await expect(air.get('https://api.test/a')).resolves.toBeInstanceOf(Blob)
   })
 
-  // Same detection runs on the error path, so the hang was there too: a non-2xx that
-  // never finishes arriving used to hold the rejection open just as long.
   it('does not hang on a non-2xx with a streaming content type', async () => {
     mockFetch(sse('data: nope\n\n', 500))
 

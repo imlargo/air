@@ -60,9 +60,6 @@ describe('raw', () => {
     expect(response.ok).toBe(true)
   })
 
-  // The status check runs before parsing, so a failed request never resolves —
-  // whichever client asked for it. error.response is the raw response, and it is
-  // the only way to reach one.
   it('still throws on a non-2xx', async () => {
     mockFetch(() => json({ message: 'nope' }, { status: 404 }))
 
@@ -74,9 +71,6 @@ describe('raw', () => {
     expect(isAirError(error) && error.data).toEqual({ message: 'nope' })
   })
 
-  // The pairing raw and stream exist to serve together: a header that describes
-  // the stream. data is response.body itself — one body, consumed once, from
-  // whichever name the caller reaches for.
   it('hands back an unread stream alongside the response', async () => {
     mockFetch(() => json({ id: 1 }, { headers: { 'content-length': '9' } }))
 
@@ -91,7 +85,6 @@ describe('raw', () => {
     expect(response.bodyUsed).toBe(true)
   })
 
-  // Not a limitation of air's: a body is read once, and data is that read.
   it('hands back a spent response when it read the body', async () => {
     mockFetch(() => json({ id: 1 }))
 

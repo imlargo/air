@@ -122,7 +122,6 @@ describe('query', () => {
     expect(new URL(requests[0]!.url).searchParams.get('q')).toBe('a&b=c')
   })
 
-  // Dropping falsy values instead of nullish ones is a classic bug.
   it('keeps falsy values that are not null or undefined', async () => {
     const requests = mockFetch()
     await air.get('https://api.test/s', { query: { active: false, count: 0, q: '' } })
@@ -172,9 +171,6 @@ describe('query', () => {
     expect(requests[0]!.url).toBe('https://api.test/s?page=2&active=true')
   })
 
-  // The reason the narrow type was a dead end rather than a style preference:
-  // Object.fromEntries keeps only the last of a repeated key, so converting a
-  // URLSearchParams into the record form by hand loses params silently.
   it('keeps every value of a repeated key in a URLSearchParams', async () => {
     const requests = mockFetch()
     await air.get('https://api.test/s', {
@@ -243,8 +239,6 @@ describe('query', () => {
     expect(requests[0]!.url).toBe('https://api.test/s?key=abc&page=1')
   })
 
-  // Re-serialising the existing search string through URLSearchParams would turn %20 into
-  // +. It must survive untouched whether or not air appends anything after it.
   it('leaves an existing search string byte-for-byte alone when no query is involved', async () => {
     const requests = mockFetch()
     await air.get('https://api.test/s?msg=hola%20mundo', { headers: { 'X-Test': '1' } })

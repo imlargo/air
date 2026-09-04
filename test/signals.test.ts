@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import air from '../src/index.js'
 import { json, mockFetch, stall } from './mock.js'
 
-// Collects the signal handed to fetch on each call, which is the whole subject of most
-// tests here: one instance per request, or one shared by all of them.
 function signalSpy() {
   const seen: (AbortSignal | null | undefined)[] = []
   vi.stubGlobal(
@@ -64,9 +62,6 @@ describe('signals', () => {
     expect(seen[0]).not.toBe(seen[1])
   })
 
-  // The bug this option exists for: a bare AbortSignal.timeout() in a client's
-  // defaults is one instance shared by every request, so once it fires the client
-  // is dead — every later request rejects instantly, without being sent.
   it('gives each request its own timeout, so a fired one does not poison the next', async () => {
     mockFetch((request) =>
       request.url.endsWith('/slow') ? stall(request) : json({ ok: 1 }),
@@ -121,8 +116,6 @@ describe('signals', () => {
     expect(seen[0]).not.toBe(seen[1])
   })
 
-  // A timeout budget should cover the request, not the token refresh that ran
-  // before it, so the signal is resolved after the headers are.
   it('resolves the signal after an async header function', async () => {
     const order: string[] = []
     vi.stubGlobal(
