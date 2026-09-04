@@ -404,9 +404,11 @@ const api = air.create({
 })
 ```
 
-`total` comes from `Content-Length` and is absent when the header is. Upload progress needs
-no wrapper: hand `body` a `ReadableStream` that counts as it is read, as in
-[`examples/progress.mjs`](./examples/progress.mjs).
+`total` comes from `Content-Length` and is absent when the header is. `onProgress` fires once
+per network chunk, which on a fast connection is hundreds of times a second; if it drives a UI,
+coalesce it yourself, with `requestAnimationFrame` or a timestamp check, rather than rendering on
+each call. Upload progress needs no wrapper: hand `body` a `ReadableStream` that counts as it is
+read, as in [`examples/progress.mjs`](./examples/progress.mjs).
 
 ## Errors
 
