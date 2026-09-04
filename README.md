@@ -1,16 +1,49 @@
 # air
 
+> A tiny, modern HTTP client for TypeScript. Built on native `fetch`.
+
 [![CI](https://github.com/imlargo/air/actions/workflows/ci.yml/badge.svg)](https://github.com/imlargo/air/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@imlargo/air)](https://www.npmjs.com/package/@imlargo/air)
+[![size](https://img.shields.io/bundlejs/size/@imlargo/air)](https://bundlejs.com/?q=@imlargo/air)
 
-A tiny HTTP client for TypeScript, built on native `fetch`.
+Every codebase wraps `fetch` the same way: join a base URL, serialize the body, parse the
+response, throw on a bad status. air is that wrapper, written once, with types that tell the
+truth. Everything else an HTTP client could do, retries, token refresh, progress, is a function
+around `fetch` that you import or write, so the client never grows and never surprises you.
 
-- Zero runtime dependencies. ESM only. The client is about 2 kB min+gzip.
-- A call resolves to the parsed body. Non-2xx responses throw.
-- Bring your own `fetch`, for server-side rendering and for tests.
-- No timeout, retry or interceptor machinery in the client. Retry, token refresh, download
-  progress and two serializers ship as separate imports that wrap `fetch`; see [Utilities](#utilities).
-- Node 20+, browsers, Deno, Bun and edge runtimes, all verified in CI.
+## Why air
+
+Over plain `fetch`:
+
+- **One call, one value.** `await api.get<User>('/users/1')` resolves to the parsed body.
+- **Errors that throw**, with the parsed error body, the request as it was sent, and the response.
+- **A base URL that keeps its path**, query params from a record, JSON bodies with the header set.
+- **Clients with defaults**, derived without mutating the parent. Headers and signals can be
+  functions, so a token or a timeout is fresh on every request.
+- **Streams recognized**, so an SSE or NDJSON endpoint hands you a `ReadableStream` instead of
+  hanging.
+
+Over other clients:
+
+- **Types that do not lie.** A `204` is `null` and the signature says so. A `Date` in a query
+  is a compile error, not `[object Object]`. `unknown` by default, never `any`.
+- **No hidden behavior.** No default timeout that cancels a slow download, no silent retry that
+  sends a `GET` twice, no request you did not ask for.
+- **Composition instead of hooks.** A wrapper around `fetch` sees everything an interceptor
+  sees. Retry, refresh and progress ship as such wrappers, each its own import.
+- **2 kB, zero dependencies, one file.** Verified in CI on Node 20 to 24, Bun and Deno on every
+  commit, and every recipe in this README is a runnable, asserted example.
+- **Reasons, written down.** Each thing air leaves out has a decision record in
+  [CONTRIBUTING.md](./CONTRIBUTING.md), and [Scope](#scope) says how that can change.
+
+### When to choose something else
+
+- You want retries, timeouts and hooks configured in an options object rather than composed:
+  [ky](https://github.com/sindresorhus/ky).
+- You need CommonJS, or browsers without `fetch`: [axios](https://github.com/axios/axios).
+- You are in the Nuxt and UnJS ecosystem: [ofetch](https://github.com/unjs/ofetch).
+
+## Install
 
 ```bash
 pnpm add @imlargo/air
@@ -29,6 +62,18 @@ const created = await air.post<User>('https://api.example.com/users', {
 ```
 
 Shortcuts: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`.
+
+The last line, with plain `fetch`:
+
+```ts
+const response = await fetch('https://api.example.com/users', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'Ada' }),
+})
+if (!response.ok) throw new Error(`POST /users failed with ${response.status}`)
+const created = (await response.json()) as User
+```
 
 ## Clients
 
@@ -522,6 +567,13 @@ README and moved into the package when they showed up, in the same shape, across
 production codebases. If something is requested often and passes the test, it can be added,
 in the client or as another import path. If it is requested often and fails the test, the
 answer is a recipe here and a reason there. Open an issue either way.
+
+## Runtimes
+
+Node 20 and later, Bun and Deno, verified in CI on every commit against the built package. The
+latest Chrome, Firefox and Safari, and edge runtimes such as Cloudflare Workers and Vercel Edge:
+air uses only `fetch`, `Headers`, `URLSearchParams`, `AbortSignal` and `ReadableStream`, all
+baseline web platform. ESM only.
 
 ## Examples
 

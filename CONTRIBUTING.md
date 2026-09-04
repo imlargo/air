@@ -3,6 +3,12 @@
 How the library is designed, the behavior that must stay exact, and the decisions already made.
 For usage, see [README.md](./README.md).
 
+**What air is.** `fetch` with the parts every codebase rewrites, a base URL, a body that
+serializes itself, a response that parses itself, and errors that throw, and none of the parts it
+doesn't. Types that tell the truth, no behavior the caller did not ask for, and everything else as
+a function around `fetch`. Every decision below serves that sentence; a change that does not is
+out of scope however useful it looks.
+
 ## Principles
 
 - **Less code.** A feature that can live in userland does. A feature that needs thirty lines
