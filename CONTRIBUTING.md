@@ -183,6 +183,12 @@ exactly once, with or without per-request options. Do not add a path that skips 
   failure into synchronized retries; `Math.random()` times the ceiling does not.
 - **Progress preserves what `raw` reads**: status, headers, `url` and `redirected` are copied
   onto the wrapped response, since the `Response` constructor cannot set the last two.
+- **Before a utility ships, walk through how a caller could misuse it**, not only how it works
+  when used as intended: what if they route the utility's own dependency through itself, share
+  one instance across users, pass a lowercase method, return `NaN`, throw inside a callback.
+  Each of those was found in review and is now a test. A misuse that hangs or leaks across
+  users is fixed in the signature, not in the docs; a misuse that merely fails gets a test that
+  pins the failure mode.
 - Every utility has a test file and an asserted example, like the client.
 
 ### Types
