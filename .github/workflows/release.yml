@@ -53,6 +53,22 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # A version already on npm cannot be published again. That is the normal case
+      # for the first version of a new package name, which npm requires to be
+      # published by hand before a trusted publisher can be configured, and for a
+      # re-run after a publish that succeeded.
+      - name: Check whether the version is already published
+        id: published
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          tag="${GITHUB_REF_NAME#v}"
+          if npm view "${name}@${tag}" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "${name}@${tag} is already on npm; skipping publish"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # No NPM_TOKEN: npm dropped 2FA-bypass tokens, so CI authenticates through
       # trusted publishing instead: npm verifies this workflow's OIDC identity
       # against the trusted publisher configured on the package. Requires that
@@ -60,7 +76,8 @@ jobs:
       # this workflow filename, or the publish is rejected.
       #
       # prepublishOnly runs the build; provenance is attached automatically.
-      - run: npm publish --access public
+      - if: steps.published.outputs.already == 'false'
+        run: npm publish --access public
 
       # A tag on its own renders as an empty page, so anyone arriving from a
       # changelog link or the npm sidebar sees nothing. The entry the step above

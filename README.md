@@ -1,7 +1,7 @@
 # air
 
 [![CI](https://github.com/imlargo/air/actions/workflows/ci.yml/badge.svg)](https://github.com/imlargo/air/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@korastd/air)](https://www.npmjs.com/package/@korastd/air)
+[![npm](https://img.shields.io/npm/v/@imlargo/air)](https://www.npmjs.com/package/@imlargo/air)
 
 A tiny HTTP client for TypeScript, built on native `fetch`.
 
@@ -12,13 +12,13 @@ A tiny HTTP client for TypeScript, built on native `fetch`.
 - Node 20+, browsers, Deno, Bun and edge runtimes.
 
 ```bash
-pnpm add @korastd/air
+pnpm add @imlargo/air
 ```
 
 ## Usage
 
 ```ts
-import air from '@korastd/air'
+import air from '@imlargo/air'
 
 const user = await air<User>('https://api.example.com/users/1') // GET
 const users = await air.get<User[]>('https://api.example.com/users')
@@ -76,7 +76,7 @@ compile. Two ways through:
 await api.get('/users', { next: { revalidate: 60 } })
 
 // 2. Augment AirOptions once, in any .d.ts of your project:
-declare module '@korastd/air' {
+declare module '@imlargo/air' {
   interface AirOptions {
     cf?: { cacheTtl?: number }
   }
@@ -148,7 +148,7 @@ Write the loop. It is shorter than any option, and it can see your `AbortSignal`
 a cancellation is told apart from a transient failure.
 
 ```ts
-import air, { isAirError } from '@korastd/air'
+import air, { isAirError } from '@imlargo/air'
 
 const transient = (error: unknown) =>
   isAirError(error) && (error.status === undefined || error.status >= 500)
@@ -301,7 +301,7 @@ const body = await api.get('/download', { parse: 'stream' }) // ReadableStream<U
 default. To build the options as a value, use `StreamOptions`:
 
 ```ts
-import type { StreamOptions } from '@korastd/air'
+import type { StreamOptions } from '@imlargo/air'
 
 const download: StreamOptions = { parse: 'stream' }
 ```
@@ -345,7 +345,7 @@ Every failure throws an `AirError`: a non-2xx status, a network error, a timeout
 an unreadable body.
 
 ```ts
-import { isAirError } from '@korastd/air'
+import { isAirError } from '@imlargo/air'
 
 try {
   await api.get('/users/1')

@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to `@korastd/air`. The format follows
+Notable changes to `@imlargo/air`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). Since 1.0.0 a breaking change
 means a major bump; before it, while the major was `0`, a minor bump carried them.
@@ -10,10 +10,19 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
-The next release is **2.0.0**. The two entries under Changed break 1.x, both in the direction of
-the types and the defaults telling the truth.
+## [2.0.0] - 2026-09-04
+
+Three entries under Changed break 1.x: the package name, and two defaults that now tell the
+truth.
 
 ### Changed
+
+- **Breaking: the package is `@imlargo/air`.** 1.x was published as `@korastd/air`, which
+  stays at 1.0.0 and is deprecated. Change the import specifier; nothing else moves.
+
+  ```ts
+  import air from '@imlargo/air'
+  ```
 
 - **Breaking: every call resolves to `T | null`.** A `204` or an empty body has always resolved
   to `null`; 1.x typed it as `T` anyway. `api.get<User>('/u')` is now `Promise<User | null>`,
@@ -343,7 +352,8 @@ dependencies.
 No timeout or retry options, by design. `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/imlargo/air/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/imlargo/air/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/imlargo/air/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/imlargo/air/compare/v0.4.0...v0.4.1

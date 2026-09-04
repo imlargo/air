@@ -181,7 +181,7 @@ Settled. Reopen only with new information.
 | No schema validation                                   | `Schema.parse(await api.get(...))` is one line, and an adapter surface is a plugin system.                                                                                                                                                                                                  |
 | No progress callbacks                                  | A `fetch` wrapper with a `TransformStream` does it; see `examples/progress.mjs`.                                                                                                                                                                                                            |
 | Errors expose `request` and `response` as plain fields | Redaction before logging is the app's job.                                                                                                                                                                                                                                                  |
-| Published as `@korastd/air`                            | `air` was taken on npm.                                                                                                                                                                                                                                                                     |
+| Published as `@imlargo/air`                            | `air` was taken on npm, and a user scope needs no organization. 1.x shipped as `@korastd/air`, deprecated in favour of this name at 2.0.0.                                                                                                                                                  |
 
 ## Code conventions
 
@@ -248,7 +248,13 @@ installing from a git URL without devDependencies does not fail. CI sets `HUSKY:
 `release.yml` runs on a `v*` tag. It refuses to publish if the tag disagrees with `package.json`
 or `CHANGELOG.md` has no section for it, runs lint, typecheck and tests, publishes with npm
 trusted publishing (OIDC, no `NPM_TOKEN`), and creates a GitHub release from the changelog
-entry. The trusted publisher on npmjs.com must name this repository and this workflow filename.
+entry. If the version is already on npm the publish step is skipped and the release is still
+created, so a tag pushed after a manual publish, or a re-run, does not fail.
+
+The trusted publisher on npmjs.com must name this repository and this workflow filename. npm
+only lets you configure it on a package that already exists, so the first version of a new
+package name is published by hand (`npm publish --access public`, with 2FA) and every later one
+by the workflow.
 
 To release: move `Unreleased` entries under a version heading, bump `version`, commit, then
 `git tag vX.Y.Z && git push origin vX.Y.Z`.
