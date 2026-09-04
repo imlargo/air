@@ -1,7 +1,7 @@
 {
   "name": "@imlargo/air",
   "type": "module",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A tiny, modern HTTP client for TypeScript. Built on native fetch.",
   "license": "MIT",
   "sideEffects": false,
@@ -18,7 +18,9 @@
     "http",
     "http-client",
     "esm",
-    "typescript"
+    "typescript",
+    "retry",
+    "sse"
   ],
   "publishConfig": {
     "access": "public"
@@ -28,6 +30,26 @@
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
+    },
+    "./retry": {
+      "types": "./dist/retry.d.mts",
+      "default": "./dist/retry.mjs"
+    },
+    "./refresh": {
+      "types": "./dist/refresh.d.mts",
+      "default": "./dist/refresh.mjs"
+    },
+    "./progress": {
+      "types": "./dist/progress.d.mts",
+      "default": "./dist/progress.mjs"
+    },
+    "./form": {
+      "types": "./dist/form.d.mts",
+      "default": "./dist/form.mjs"
+    },
+    "./query": {
+      "types": "./dist/query.d.mts",
+      "default": "./dist/query.mjs"
     },
     "./package.json": "./package.json"
   },

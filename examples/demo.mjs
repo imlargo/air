@@ -3,6 +3,7 @@
 // Run: pnpm demo
 
 import air, { isAirError } from '../dist/index.mjs'
+import { retry } from '../dist/retry.mjs'
 
 async function section(title, fn) {
   console.log(`\n--- ${title} ---`)
@@ -108,24 +109,12 @@ await section('timeout via native AbortSignal, no timeout option needed', async 
   }
 })
 
-await section('retry via a plain loop, no retry option needed', async () => {
-  const transient = (error) =>
-    isAirError(error) && (error.status === undefined || error.status >= 500)
-
-  async function withRetry(fn, attempts = 3) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await fn()
-      } catch (error) {
-        if (attempt >= attempts || !transient(error)) throw error
-        console.log(`  attempt ${attempt} failed, retrying...`)
-        await new Promise((resolve) => setTimeout(resolve, 200 * attempt))
-      }
-    }
-  }
-
+await section('retry via the retry utility, applied to a client', async () => {
+  const flaky = air.create({
+    fetch: retry({ attempts: 3, delay: (attempt) => 200 * attempt }),
+  })
   // httpbin picks one of the listed codes at random; a 200 from it has an empty body.
-  const result = await withRetry(() => air.get('https://httpbin.org/status/500,200,200'))
+  const result = await flaky.get('https://httpbin.org/status/500,200,200')
   console.log('eventually resolved (empty body on success):', result)
 })
 

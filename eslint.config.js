@@ -23,10 +23,12 @@ export default defineConfig(
   },
   {
     // Tests index into arrays of recorded requests under noUncheckedIndexedAccess, and
-    // `requests[0]!` is the honest spelling of "this test sent exactly one request".
+    // `requests[0]!` is the honest spelling of "this test sent exactly one request". A fetch
+    // double is `async` because the `Fetch` type returns a promise, whether or not it awaits.
     files: ['test/**'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/require-await': 'off',
     },
   },
   {
@@ -39,6 +41,7 @@ export default defineConfig(
       globals: {
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        File: 'readonly',
         FormData: 'readonly',
         Headers: 'readonly',
         ReadableStream: 'readonly',

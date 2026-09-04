@@ -4,7 +4,14 @@
 // Run: pnpm build && node scripts/smoke.mjs
 
 import { strict as assert } from 'node:assert'
+import { readFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 import air, { AirError, create, isAirError } from '../dist/index.mjs'
+import { retry } from '../dist/retry.mjs'
+import { refresh } from '../dist/refresh.mjs'
+import { progress } from '../dist/progress.mjs'
+import { toFormData } from '../dist/form.mjs'
+import { toQueryParams } from '../dist/query.mjs'
 
 const json = (data, init) =>
   new Response(JSON.stringify(data), {
@@ -138,4 +145,65 @@ assert.equal(error.status, 404, 'carries the status')
 assert.deepEqual(error.data, { message: 'nope' }, 'carries the parsed error body')
 
 const runtime = globalThis.navigator?.userAgent ?? `Node.js/${process.version}`
+// The root entry is the client and nothing else: no utility code, and a size that does not
+// creep. Each utility ships self-contained, so importing one loads exactly one file.
+const dist = (name) =>
+  readFileSync(new URL(`../dist/${name}.mjs`, import.meta.url), 'utf8')
+assert.ok(gzipSync(dist('index')).length < 3500, 'root entry stays under 3.5 kB gzip')
+for (const name of ['index', 'retry', 'refresh', 'progress', 'form', 'query']) {
+  assert.ok(!/^import /m.test(dist(name)), `${name}.mjs has no runtime imports`)
+}
+
+// Utilities: one representative behaviour each, through the built files
+let attempts = 0
+stub(() => (++attempts === 1 ? new Response(null, { status: 503 }) : json({ ok: 1 })))
+assert.deepEqual(
+  await air.get('https://x.test/a', { fetch: retry({ delay: () => 0 }) }),
+  { ok: 1 },
+)
+assert.equal(attempts, 2, 'retry re-sent a 503')
+
+attempts = 0
+stub(() => (++attempts === 1 ? new Response(null, { status: 401 }) : json({ ok: 1 })))
+await air.get('https://x.test/a', {
+  fetch: refresh({ headers: () => ({ Authorization: 'Bearer new' }) }),
+})
+assert.equal(
+  seen.request.headers.get('authorization'),
+  'Bearer new',
+  'refresh retried with new headers',
+)
+
+const reports = []
+stub(
+  () =>
+    new Response('{"ok":1}', {
+      headers: { 'content-type': 'application/json', 'content-length': '8' },
+    }),
+)
+await air.get('https://x.test/a', {
+  fetch: progress({ onProgress: (p) => reports.push(p) }),
+})
+assert.deepEqual(reports.at(-1), { loaded: 8, total: 8 }, 'progress counted the body')
+
+stub(() => json({}))
+await air.post('https://x.test/u', {
+  body: toFormData({ name: 'Ada', tags: ['a', 'b'] }),
+})
+assert.match(
+  seen.request.headers.get('content-type'),
+  /^multipart\/form-data; boundary=/,
+  'toFormData body is multipart',
+)
+
+stub(() => json({}))
+await air.get('https://x.test/s', {
+  query: toQueryParams({ filter: { since: new Date(0) } }),
+})
+assert.equal(
+  decodeURIComponent(seen.url),
+  'https://x.test/s?filter[since]=1970-01-01T00:00:00.000Z',
+  'toQueryParams feeds query',
+)
+
 console.log(`smoke: all checks passed on ${runtime}`)
