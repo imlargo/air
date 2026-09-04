@@ -277,15 +277,18 @@ requires. `GET` and `HEAD` never send a body.
 
 The body is parsed from the response `Content-Type`:
 
-| Content type                                                     | Resolves to      |
-| ---------------------------------------------------------------- | ---------------- |
-| `application/json`, `*+json`                                     | parsed JSON      |
-| `text/*`                                                         | `string`         |
-| `text/event-stream`, `application/x-ndjson`, `application/jsonl` | `ReadableStream` |
-| anything else                                                    | `Blob`           |
+| Content type                                                                                 | Resolves to      |
+| -------------------------------------------------------------------------------------------- | ---------------- |
+| `application/json`, `*+json`                                                                 | parsed JSON      |
+| `text/*`                                                                                     | `string`         |
+| `text/event-stream`, `multipart/x-mixed-replace`                                             | `ReadableStream` |
+| `application/x-ndjson`, `application/ndjson`, `application/jsonl`, `application/x-jsonlines` | `ReadableStream` |
+| `application/json-seq`, `application/stream+json`, `application/x-json-stream`               | `ReadableStream` |
+| anything else                                                                                | `Blob`           |
 
-A `204` or an empty body resolves to `null`. Streaming types are returned unread because they
-may never end. `application/octet-stream` is a `Blob`.
+A `204` or an empty body resolves to `null`, and the return type says so: every call is
+`Promise<T | null>`. Record-stream and open-ended formats are returned unread because they are
+meant to be consumed as they arrive. `application/octet-stream` is a `Blob`.
 
 `parse` overrides detection:
 
@@ -364,15 +367,26 @@ The message ends in `timed out` for `AbortSignal.timeout`, `was aborted` for `ab
 `isAirError` checks a `Symbol.for('air.error')` brand, so it works across two copies of the
 package where `instanceof` would not.
 
+`error.request.headers` holds the headers as sent, `Authorization` included. Redact before
+logging an `AirError` whole.
+
 ## Types
 
 ```ts
-air.get<User[]>('/users') // Promise<User[]>
+air.get<User[]>('/users') // Promise<User[] | null>
 air.get('/users') // Promise<unknown>
-air.raw.get<User[]>('/users') // Promise<AirResponse<User[]>>
+air.raw.get<User[]>('/users') // Promise<AirResponse<User[] | null>>
+air.get('/download', { parse: 'stream' }) // Promise<ReadableStream<Uint8Array> | null>
 ```
 
-`<T>` is an assertion, not a check. A `204` resolves to `null` even though the signature says `T`.
+`<T>` is your assertion about the body when there is one; it is not validated. `null` is what a
+`204` or an empty body resolves to, so the type includes it. When an endpoint always answers with
+a body, narrow at the call site:
+
+```ts
+const user = await api.get<User>('/users/1')
+if (!user) throw new Error('expected a body')
+```
 
 ## Examples
 

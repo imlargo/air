@@ -80,9 +80,9 @@ export interface AirOptions extends Omit<RequestInit, 'body' | 'headers' | 'sign
 }
 
 /**
- * Options for a request whose body is returned unread, as a `ReadableStream<Uint8Array>`. The
- * call signature that accepts these has no type parameter, so
- * `api.get<User>(url, { parse: 'stream' })` does not compile.
+ * Options for a request whose body is returned unread, as a `ReadableStream<Uint8Array>`, or
+ * `null` for a body-less response. The call signature that accepts these has no type
+ * parameter, so `api.get<User>(url, { parse: 'stream' })` does not compile.
  */
 export type StreamOptions = Omit<AirOptions, 'parse'> & { parse: 'stream' }
 
@@ -111,15 +111,19 @@ export interface AirResponse<T = unknown> {
 }
 
 // The stream overload comes first: overload resolution takes the first match, and this one
-// declares no type parameter for a caller to contradict.
+// declares no type parameter for a caller to contradict. Every signature resolves to `null`
+// as well as the body, because a 204 or an empty body does.
 interface Call {
-  (url: AirURL, options: StreamOptions): Promise<ReadableStream<Uint8Array>>
-  <T = unknown>(url: AirURL, options?: AirOptions): Promise<T>
+  (url: AirURL, options: StreamOptions): Promise<ReadableStream<Uint8Array> | null>
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<T | null>
 }
 
 interface RawCall {
-  (url: AirURL, options: StreamOptions): Promise<AirResponse<ReadableStream<Uint8Array>>>
-  <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T>>
+  (
+    url: AirURL,
+    options: StreamOptions,
+  ): Promise<AirResponse<ReadableStream<Uint8Array> | null>>
+  <T = unknown>(url: AirURL, options?: AirOptions): Promise<AirResponse<T | null>>
 }
 
 /**
@@ -136,7 +140,13 @@ export interface AirRawClient extends RawCall {
   options: RawCall
 }
 
-/** An HTTP client. Callable directly for a `GET`, with a shortcut per method. */
+/**
+ * An HTTP client. Callable directly for a `GET`, with a shortcut per method.
+ *
+ * @remarks
+ * Every call resolves to the parsed body, or to `null` for a `204` or an empty body. `<T>` is
+ * the caller's assertion about the body when there is one.
+ */
 export interface AirClient extends Call {
   get: Call
   post: Call

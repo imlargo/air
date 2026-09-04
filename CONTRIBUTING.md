@@ -107,11 +107,14 @@ exactly once, with or without per-request options. Do not add a path that skips 
 ### Response parsing
 
 - Detected from `Content-Type`, matched case-insensitively and ignoring parameters: JSON for
-  `application/json` and `+json`; text for `text/*`; `stream` for `text/event-stream`,
-  `application/x-ndjson` and `application/jsonl`, checked before `text/*`; `Blob` otherwise,
-  including a missing header. `arrayBuffer` is never detected.
-- The streaming list contains only types that never end. `application/octet-stream` is not one.
-  Adding a type changes what its callers receive and needs the same bar as any default.
+  `application/json` and `+json`; text for `text/*`; `stream` for the types in `STREAMING`,
+  checked before the `text/*` and `+json` rules; `Blob` otherwise, including a missing header.
+  `arrayBuffer` is never detected.
+- `STREAMING` holds formats meant to be consumed record by record or held open: SSE,
+  `multipart/x-mixed-replace`, the NDJSON and JSON Lines spellings, `application/json-seq`,
+  `application/stream+json` and `application/x-json-stream`. `application/octet-stream` is a
+  single finite value and stays a `Blob`. Adding a type changes what its callers receive and is
+  a major bump.
 - Detection is the same on the error path. `error.data` for a streaming type is the unread
   stream.
 - `204` and empty bodies resolve to `null` in every mode that reads the body. `stream` returns
@@ -144,8 +147,10 @@ exactly once, with or without per-request options. Do not add a path that skips 
 
 ### Types
 
-`<T>` defaults to `unknown`, never `any`. A `204` resolves to `null` while the signature says `T`;
-modeling that as `T | null` would tax every caller for the rare case. Documented and kept.
+`<T>` defaults to `unknown`, never `any`. Every call resolves to `T | null`, because a `204` or
+an empty body resolves to `null` and the type does not lie about it. `<T>` is the caller's
+assertion about the body when there is one. Callers who know an endpoint always answers with a
+body narrow at the call site with a null check, which keeps the library honest.
 
 ## Decisions
 
@@ -162,6 +167,8 @@ Settled. Reopen only with new information.
 | `Fetch` is narrower than the global on parameters      | Narrow parameters make the type wide on implementations. `typeof fetch` and a string-only double both assign.                                                                                                                                                                               |
 | `client.raw`, not `raw: true`                          | An option that changes the return type needs a conditional type to read it back.                                                                                                                                                                                                            |
 | `parse` describes the body only                        | `parse: 'response'` did two jobs and let `<T>` lie. Replaced by `raw` and `parse: 'stream'`.                                                                                                                                                                                                |
+| Calls resolve to `T \| null`                           | 1.x promised `T` and resolved `null` on a `204`. The tax on callers is one `??` where an endpoint always has a body; the alternative was a type that lied on every `DELETE`.                                                                                                                |
+| Paths with a scheme but no `//` are relative           | `blob:` and `data:` targets are then joined to a `baseURL`, which is wrong, but only `scheme://` is unambiguous: Google-style paths such as `users:batchGet` are legitimate relative paths. Use those targets without a `baseURL`.                                                          |
 | No `MappedResponseType`                                | Conditional-type inference over an options field produces the compiler errors "predictable over clever" exists to avoid.                                                                                                                                                                    |
 | `Query` accepts `type`, rejects `interface`            | A mapped type inferred per call fixes it only when the caller omits `<T>`; TypeScript has no partial inference. Compiled and confirmed.                                                                                                                                                     |
 | No index signature on `AirOptions`                     | It would disable excess-property checking. Runtime fields are reached via a global `RequestInit` augmentation or a module augmentation of `AirOptions`; both compiled against `dist/`. Passing a variable instead of a literal does not work unless it shares a property with `AirOptions`. |

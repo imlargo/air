@@ -137,4 +137,5 @@ assert.ok(isAirError(error), 'throws an AirError')
 assert.equal(error.status, 404, 'carries the status')
 assert.deepEqual(error.data, { message: 'nope' }, 'carries the parsed error body')
 
-console.log(`smoke: all checks passed on Node ${process.version}`)
+const runtime = globalThis.navigator?.userAgent ?? `Node.js/${process.version}`
+console.log(`smoke: all checks passed on ${runtime}`)

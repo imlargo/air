@@ -10,6 +10,30 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+The next release is **2.0.0**. The two entries under Changed break 1.x, both in the direction of
+the types and the defaults telling the truth.
+
+### Changed
+
+- **Breaking: every call resolves to `T | null`.** A `204` or an empty body has always resolved
+  to `null`; 1.x typed it as `T` anyway. `api.get<User>('/u')` is now `Promise<User | null>`,
+  `raw` is `Promise<AirResponse<User | null>>`, and `parse: 'stream'` is
+  `Promise<ReadableStream<Uint8Array> | null>`. Where an endpoint always answers with a body,
+  narrow at the call site with a null check.
+- **Breaking: more content types are detected as streams.** `multipart/x-mixed-replace`,
+  `application/ndjson`, `application/x-jsonlines`, `application/json-seq`,
+  `application/stream+json` and `application/x-json-stream` join `text/event-stream`,
+  `application/x-ndjson` and `application/jsonl`. A finite response with one of the new types
+  used to arrive as a `Blob`, a `string` or, for `stream+json`, parsed JSON; it now arrives as a
+  `ReadableStream`. `parse` still overrides detection in either direction.
+- **`exports` declares `types` explicitly**, for tooling that reads the condition rather than
+  looking for a sibling `.d.mts`.
+- **Every request merges its options through one path.** Defaults given to the exported
+  `create()` used to reach a request without normalization. Not observable through the public
+  API.
+- **TSDoc on the public surface.** Options, types and error fields show their documentation on
+  hover.
+
 ### Fixed
 
 - **The existing search string is no longer re-encoded when `query` appends to it.**
@@ -19,15 +43,8 @@ the outside does not get a line here; the git history already has it.
 - **A query-only or fragment-only path is appended to `baseURL` without a slash.**
   `'https://api.test/v1'` + `'?page=2'` is `https://api.test/v1?page=2`, not `/v1/?page=2`.
 - **`Content-Type` is matched case-insensitively.** `Application/JSON` parsed as a `Blob`.
-
-### Changed
-
-- **`exports` declares `types` explicitly**, for tooling that reads the condition rather than
-  looking for a sibling `.d.mts`.
-- **Every request merges its options through one path.** Defaults given to the exported
-  `create()` used to reach a request without normalization. The public API is unchanged.
-- **TSDoc on the whole public surface.** Options, types and error fields show their
-  documentation on hover.
+- **Error messages no longer end in a space over HTTP/2**, where there is no reason phrase:
+  `GET /x failed with 500`, not `failed with 500 `.
 
 ## [1.0.0] — 2026-08-19
 

@@ -58,8 +58,34 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node scripts/smoke.mjs
 
-      # The integration lane. The vitest suite mocks `fetch`, and every bug this library
-      # has shipped got through that gap — a mock agrees with whatever its author assumed.
-      # These talk to a real socket over real fetch, so they disagree when it matters, and
-      # they run on every supported Node because that is where a platform difference shows.
       - run: node scripts/examples.mjs
+
+  runtimes:
+    name: Built output on ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [bun, deno]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # The README claims Bun and Deno. The smoke test uses only web-standard APIs plus
+      # `node:assert` and `process.version`, which both runtimes provide.
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+      - if: matrix.runtime == 'bun'
+        run: bun scripts/smoke.mjs
+      - if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - if: matrix.runtime == 'deno'
+        run: deno run --allow-net --allow-read scripts/smoke.mjs

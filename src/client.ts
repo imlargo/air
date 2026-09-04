@@ -82,7 +82,7 @@ function reasonFor(error: unknown, fallback: string): string {
   return fallback
 }
 
-const describe = (error: unknown): string =>
+const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 function fail(message: string, info: AirRequest, init?: AirErrorInit): never {
@@ -143,16 +143,15 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
       signal,
     })
   } catch (error) {
-    const reason = reasonFor(error, `failed: ${describe(error)}`)
+    const reason = reasonFor(error, `failed: ${messageOf(error)}`)
     fail(`${verb} ${url} ${reason}`, info, { cause: error })
   }
 
   if (!response.ok) {
     const data = await parseResponse(response).catch(() => undefined)
-    fail(`${verb} ${url} failed with ${response.status} ${response.statusText}`, info, {
-      response,
-      data,
-    })
+    // No reason phrase over HTTP/2, so `statusText` is usually empty.
+    const status = [response.status, response.statusText].filter(Boolean).join(' ')
+    fail(`${verb} ${url} failed with ${status}`, info, { response, data })
   }
 
   try {
@@ -183,11 +182,11 @@ export function create(defaults: AirOptions = {}): AirClient {
   const raw =
     (method?: string) =>
     <T = unknown>(url: AirURL, options?: AnyOptions) =>
-      request(url, settle(options, method)) as Promise<AirResponse<T>>
+      request(url, settle(options, method)) as Promise<AirResponse<T | null>>
 
   const data = (method?: string) => {
     const send = raw(method)
-    return <T = unknown>(url: AirURL, options?: AnyOptions): Promise<T> =>
+    return <T = unknown>(url: AirURL, options?: AnyOptions): Promise<T | null> =>
       send<T>(url, options).then((result) => result.data)
   }
 

@@ -19,6 +19,7 @@ describe('errors', () => {
 
     expect(error).toBeInstanceOf(AirError)
     expect(error.name).toBe('AirError')
+    expect(error.message).toBe('GET https://api.test/users/1 failed with 404 Not Found')
     expect(error.status).toBe(404)
     expect(error.statusText).toBe('Not Found')
     expect(error.data).toEqual({ message: 'nope' })
@@ -76,7 +77,7 @@ describe('errors', () => {
     const error = await rejection(api.get('/s', { query: { page: 2 } }))
 
     expect(error.request.url).toBe('https://api.test/s?page=2')
-    expect(error.message).toBe('GET https://api.test/s?page=2 failed with 400 ')
+    expect(error.message).toBe('GET https://api.test/s?page=2 failed with 400')
   })
 
   it('surfaces network failures as AirError', async () => {

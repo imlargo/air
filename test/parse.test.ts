@@ -26,6 +26,17 @@ describe('parsing', () => {
     await expect(air.delete('https://api.test/users/1')).resolves.toBeNull()
   })
 
+  it('types every call as possibly null', async () => {
+    mockFetch(() => json({ id: 1 }))
+    const user = await air.get<{ id: number }>('https://api.test/a')
+    // @ts-expect-error a 204 or an empty body resolves to null, and the type says so
+    expect(user.id).toBe(1)
+
+    const { data } = await air.raw.get<{ id: number }>('https://api.test/a')
+    // @ts-expect-error same on the raw client
+    expect(data.id).toBe(1)
+  })
+
   it('resolves an empty body to null', async () => {
     mockFetch(respond('', 'application/json'))
     await expect(air.get('https://api.test/nothing')).resolves.toBeNull()
@@ -77,7 +88,7 @@ describe('parsing', () => {
     mockFetch(() => json({ id: 1 }))
     const blob = await air.get<Blob>('https://api.test/a', { parse: 'blob' })
     expect(blob).toBeInstanceOf(Blob)
-    await expect(blob.text()).resolves.toBe('{"id":1}')
+    await expect(blob!.text()).resolves.toBe('{"id":1}')
   })
 
   it('parses as an ArrayBuffer on request', async () => {
@@ -86,7 +97,7 @@ describe('parsing', () => {
       parse: 'arrayBuffer',
     })
     expect(buffer).toBeInstanceOf(ArrayBuffer)
-    expect(buffer.byteLength).toBe(3)
+    expect(buffer!.byteLength).toBe(3)
   })
 
   it('resolves an empty body to null for blob and arrayBuffer too', async () => {
@@ -110,7 +121,7 @@ describe('parsing', () => {
     mockFetch(() => json({ id: 1 }))
 
     const body = await air.get('https://api.test/a', { parse: 'stream' })
-    const stream: ReadableStream<Uint8Array> = body
+    const stream: ReadableStream<Uint8Array> | null = body
     expect(stream).toBeInstanceOf(ReadableStream)
 
     await air.get<{ id: number }>('https://api.test/a', {
@@ -173,19 +184,34 @@ describe('parsing', () => {
     const body = await air.get<ReadableStream<Uint8Array>>('https://api.test/events')
 
     expect(body).toBeInstanceOf(ReadableStream)
-    const reader = body.getReader()
+    const reader = body!.getReader()
     const { value } = await reader.read()
     expect(new TextDecoder().decode(value)).toBe('data: one\n\n')
     await reader.cancel()
   })
 
-  it('detects line-delimited JSON as a stream too', async () => {
-    for (const type of ['application/x-ndjson', 'application/jsonl']) {
+  it('detects record-stream and open-ended content types as streams', async () => {
+    const types = [
+      'multipart/x-mixed-replace; boundary=frame',
+      'application/x-ndjson',
+      'application/ndjson',
+      'application/jsonl',
+      'application/x-jsonlines',
+      'application/json-seq',
+      'application/stream+json',
+      'application/x-json-stream',
+    ]
+    for (const type of types) {
       mockFetch(respond('{"a":1}\n', type))
       await expect(air.get(`https://api.test/${type}`)).resolves.toBeInstanceOf(
         ReadableStream,
       )
     }
+  })
+
+  it('still parses a plain +json suffix as JSON', async () => {
+    mockFetch(respond('{"ok":true}', 'application/problem+json'))
+    await expect(air.get('https://api.test/a')).resolves.toEqual({ ok: true })
   })
 
   it('leaves a charset on a streaming content type alone', async () => {
