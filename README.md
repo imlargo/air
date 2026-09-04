@@ -310,7 +310,8 @@ await api.get('/search', {
 ```
 
 A `Date` becomes its ISO string, a nested object becomes bracket keys, and arrays repeat the
-key, or use `[]` or commas with `arrays: 'brackets' | 'comma'`.
+key, or use `[]` or commas with `arrays: 'brackets' | 'comma'`. As with `query`, type a nested
+record with `type`, not `interface`.
 
 ## Body
 
