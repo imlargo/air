@@ -182,11 +182,16 @@ const api = air.create({ fetch: retry({ attempts: 3 }) })
 ```
 
 `retry` repeats a request on a network failure or on `408`, `425`, `429`, `500`, `502`, `503`
-or `504`, up to `attempts` in total, waiting `Retry-After` when the server sends it and an
-exponential delay otherwise. It only repeats idempotent methods by default, so a `POST` is sent
-once unless you list it in `methods`, and it never repeats a `ReadableStream` body, which the
-first attempt consumed. A request whose signal has fired is never retried, and the wait between
-attempts ends the moment the signal fires; the signal is also what caps a long `Retry-After`.
+or `504`, up to `attempts` in total. Between attempts it waits `Retry-After` when the server
+sends it, in full, and otherwise a random delay under an exponential ceiling of 200 ms, 400 ms,
+800 ms, so a burst of failures does not become a burst of retries; `delay` replaces that. It
+only repeats idempotent methods by default, so a `POST` is sent once unless you list it in
+`methods`, and it never repeats a `ReadableStream` body, which the first attempt consumed.
+
+A request whose signal has fired is never retried, and the wait between attempts ends the moment
+the signal fires. That signal is also the only cap on `Retry-After`: without one, a server that
+says to wait an hour is waited for. Give clients that talk to third parties a
+`signal: () => AbortSignal.timeout(ms)` that covers the retries too.
 
 The last response is returned as-is, so a status that is still failing throws the usual
 `AirError`.
@@ -236,9 +241,12 @@ const api = air.create({
   baseURL: 'https://api.example.com',
   headers: () => ({ Authorization: `Bearer ${session.token}` }),
   fetch: refresh({
-    headers: async () => {
-      session.token = await renewToken()
-      return { Authorization: `Bearer ${session.token}` }
+    headers: async (fetch) => {
+      const { token } = await (
+        await fetch('https://api.example.com/auth/renew', {})
+      ).json()
+      session.token = token
+      return { Authorization: `Bearer ${token}` }
     },
   }),
 })
@@ -249,6 +257,10 @@ moment, and every one of them is re-sent with what it returns. Storing the new t
 requests is its job too, which is why it is written as above. The retry happens exactly once,
 carries the caller's signal so it shares the original deadline, and a token that is still
 rejected throws the usual `AirError`. A `ReadableStream` body is not retried.
+
+The `fetch` your function receives is the underlying one, without `refresh`. Call the renewal
+endpoint with it, or with a client that does not carry `refresh`. Sent through the wrapped
+client, a renewal that itself answered 401 would wait for the refresh it is part of, and hang.
 
 Anything else an interceptor would do, such as logging, metrics or error translation, is the
 same shape: a function that takes a `fetch` and returns one.

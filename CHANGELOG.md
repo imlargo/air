@@ -19,12 +19,15 @@ list does not grow; import a utility and you load exactly one small file.
 
 - **`retry` from `@imlargo/air/retry`.** A `fetch` that retries transient failures: network
   errors and `408`, `425`, `429`, `500`, `502`, `503`, `504`, up to `attempts` in total,
-  honouring `Retry-After`. Idempotent methods only by default, never a `ReadableStream` body,
-  and never once the caller's signal has fired, which also ends the wait between attempts.
-  Replaces the hand-written loop the README used to show.
+  honouring `Retry-After` and otherwise waiting a jittered exponential delay. Idempotent
+  methods only by default, never a `ReadableStream` body, and never once the caller's signal
+  has fired, which also ends the wait between attempts. Replaces the hand-written loop the
+  README used to show.
 - **`refresh` from `@imlargo/air/refresh`.** A `fetch` that, on a `401`, runs your `headers`
   function once per burst of concurrent failures and re-sends each request once with the
-  result. Replaces the README recipe, single-flight included.
+  result. The function receives the underlying `fetch` to call the renewal endpoint with, so a
+  renewal cannot wait on the refresh it belongs to. Replaces the README recipe, single-flight
+  included.
 - **`progress` from `@imlargo/air/progress`.** A `fetch` that reports `{ loaded, total }` after
   every chunk while air reads the body. Status, headers, `url` and `redirected` survive, so
   `raw` sees the same response.

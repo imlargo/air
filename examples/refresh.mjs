@@ -35,9 +35,11 @@ const api = air.create({
   baseURL: server.url,
   headers: () => ({ Authorization: `Bearer ${session.token}` }),
   fetch: refresh({
-    // Store the new token for later requests, and return the headers for the retry.
-    headers: async () => {
-      const { token } = await (await fetch(`${server.url}/renew`)).json()
+    // `fetch` here is the underlying one, without this wrapper: a renewal that answered 401
+    // through the wrapped client would wait for its own refresh. Store the new token for later
+    // requests, and return the headers for the retry.
+    headers: async (fetch) => {
+      const { token } = await (await fetch(`${server.url}/renew`, {})).json()
       session.token = token
       return { Authorization: `Bearer ${token}` }
     },

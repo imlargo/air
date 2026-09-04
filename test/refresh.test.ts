@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import air, { isAirError } from '../src/index.js'
+import type { Fetch } from '../src/index.js'
 import { refresh } from '../src/refresh.js'
 import { json, mockFetch } from './mock.js'
 
@@ -153,6 +154,28 @@ describe('refresh', () => {
     const headers = new Headers(calls[1]!.headers)
     expect(headers.get('x-client')).toBe('air')
     expect(headers.get('authorization')).toBe('Bearer new')
+  })
+
+  it('hands the renewal function the unwrapped fetch, so a 401 from the renewal endpoint cannot deadlock', async () => {
+    // The renewal endpoint itself answers 401. Sent through the wrapped client this would wait
+    // for the refresh it is part of; sent through the fetch handed to `headers`, it is just a
+    // response the renewal function gets to look at.
+    const send = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.endsWith('/renew')) return new Response(null, { status: 401 })
+      const token = new Headers(init.headers).get('authorization')
+      return token === 'Bearer new'
+        ? json({ ok: true })
+        : new Response(null, { status: 401 })
+    })
+    const renew = vi.fn(async (fetch: Fetch) => {
+      const answer = await fetch('https://api.test/renew', {})
+      return { Authorization: answer.status === 401 ? 'Bearer new' : 'Bearer other' }
+    })
+    const api = air.create({ fetch: refresh({ headers: renew, fetch: send }) })
+
+    await expect(api.get(U)).resolves.toEqual({ ok: true })
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(renew.mock.calls[0]![0]).toBe(send)
   })
 
   it('uses the global fetch when none is given', async () => {

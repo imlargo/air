@@ -105,6 +105,28 @@ describe('retry', () => {
     expect(delay).toHaveBeenCalledWith(1)
   })
 
+  it('waits a jittered exponential delay by default', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.spyOn(Math, 'random').mockReturnValue(0.5)
+      const { send, calls } = scripted(status(503), status(503), ok)
+      const pending = retry({ fetch: send })(U, {})
+
+      await vi.advanceTimersByTimeAsync(99) // half of the 200 ms ceiling is 100 ms
+      expect(calls).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(calls).toHaveLength(2)
+      await vi.advanceTimersByTimeAsync(199) // then half of 400 ms
+      expect(calls).toHaveLength(2)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(calls).toHaveLength(3)
+      await expect(pending).resolves.toHaveProperty('status', 200)
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
   it('passes attempt numbers to delay, starting at 1', async () => {
     const delay = vi.fn(() => 0)
     await retry({ delay, fetch: scripted(status(503), status(503), ok).send })(U, {})

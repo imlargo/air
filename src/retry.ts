@@ -20,10 +20,12 @@ export interface RetryOptions {
    */
   statuses?: readonly number[]
   /**
-   * Milliseconds to wait before attempt `attempt`, counting from 2. Not consulted when the
-   * response carries a `Retry-After` header, which wins.
+   * Milliseconds to wait after failed attempt `attempt`, counting from 1. Not consulted when
+   * the response carries a `Retry-After` header, which wins and is honoured in full; the
+   * caller's `signal` is what caps a long one.
    *
-   * @defaultValue Exponential: 200, 400, 800, ...
+   * @defaultValue Full jitter over an exponential ceiling: a random wait up to 200 ms, then
+   * up to 400 ms, 800 ms, ...
    */
   delay?: (attempt: number) => number
   /**
@@ -37,7 +39,8 @@ export interface RetryOptions {
 const IDEMPOTENT = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE']
 const TRANSIENT = [408, 425, 429, 500, 502, 503, 504]
 
-const exponential = (attempt: number): number => 100 * 2 ** attempt
+// Full jitter: a synchronized burst of failures does not become a synchronized burst of retries.
+const exponential = (attempt: number): number => Math.random() * 100 * 2 ** attempt
 
 /**
  * A `fetch` that retries transient failures.

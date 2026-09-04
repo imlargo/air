@@ -175,7 +175,12 @@ exactly once, with or without per-request options. Do not add a path that skips 
   fired, checked on the signal rather than on the error's name; and the wait itself ends when
   the signal fires.
 - **Refresh runs the caller's `headers` once per burst**, single-flighted, retries exactly once,
-  and keeps `method`, `body` and `signal` from the original request.
+  and keeps `method`, `body` and `signal` from the original request. It hands `headers` the
+  unwrapped `fetch`: a renewal routed through the wrapped client that itself answers `401`
+  would await the very refresh it is part of and never settle. The argument makes the safe
+  path the obvious one; the TSDoc and README say why.
+- **Retry waits with full jitter by default.** A fixed exponential turns one synchronized
+  failure into synchronized retries; `Math.random()` times the ceiling does not.
 - **Progress preserves what `raw` reads**: status, headers, `url` and `redirected` are copied
   onto the wrapped response, since the `Response` constructor cannot set the last two.
 - Every utility has a test file and an asserted example, like the client.

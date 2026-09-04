@@ -6,8 +6,12 @@ export interface RefreshOptions {
    * once per burst of failures, however many requests fail at the same time; the result is
    * shared by all of them. Storing the new credential for later requests is this function's
    * job too.
+   *
+   * It receives the underlying `fetch`, without this wrapper. Use it, or any client that does
+   * not carry `refresh`, to call the renewal endpoint: a renewal sent through the wrapped
+   * client that itself answers `401` would wait for the refresh it is part of, forever.
    */
-  headers: () => HeadersInit | Promise<HeadersInit>
+  headers: (fetch: Fetch) => HeadersInit | Promise<HeadersInit>
   /**
    * Statuses that trigger a refresh.
    *
@@ -35,9 +39,10 @@ export interface RefreshOptions {
  * const api = air.create({
  *   headers: () => ({ Authorization: `Bearer ${session.token}` }),
  *   fetch: refresh({
- *     headers: async () => {
- *       session.token = await renewToken()
- *       return { Authorization: `Bearer ${session.token}` }
+ *     headers: async (fetch) => {
+ *       const { token } = await (await fetch('/auth/renew', { method: 'POST' })).json()
+ *       session.token = token
+ *       return { Authorization: `Bearer ${token}` }
  *     },
  *   }),
  * })
@@ -46,9 +51,9 @@ export interface RefreshOptions {
 export function refresh(options: RefreshOptions): Fetch {
   const { headers: renew, statuses = [401], fetch: send } = options
   let inFlight: Promise<HeadersInit> | null = null
-  const once = () =>
+  const once = (next: Fetch) =>
     (inFlight ??= Promise.resolve()
-      .then(renew)
+      .then(() => renew(next))
       .finally(() => {
         inFlight = null
       }))
@@ -61,7 +66,7 @@ export function refresh(options: RefreshOptions): Fetch {
     }
 
     await response.body?.cancel()
-    const fresh = await once()
+    const fresh = await once(next)
     const headers = new Headers(init.headers)
     new Headers(fresh).forEach((value, key) => {
       headers.set(key, value)
