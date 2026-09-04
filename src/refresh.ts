@@ -34,6 +34,10 @@ export interface RefreshOptions {
  * error rather than a loop. It carries the original `signal`, so it shares the original
  * deadline. A `ReadableStream` body is consumed by the first attempt and is not retried.
  *
+ * One instance serves one credential: the refresh is shared by every request that fails while
+ * it is in flight. Create it where the client is created, never at module scope for clients
+ * that belong to different users.
+ *
  * @example
  * ```ts
  * const api = air.create({

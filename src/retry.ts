@@ -8,7 +8,7 @@ export interface RetryOptions {
    */
   attempts?: number
   /**
-   * Methods that may be retried.
+   * Methods that may be retried, in any case.
    *
    * @defaultValue The idempotent ones: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`.
    */
@@ -58,13 +58,8 @@ const exponential = (attempt: number): number => Math.random() * 100 * 2 ** atte
  * ```
  */
 export function retry(options: RetryOptions = {}): Fetch {
-  const {
-    attempts = 3,
-    methods = IDEMPOTENT,
-    statuses = TRANSIENT,
-    delay = exponential,
-    fetch: send,
-  } = options
+  const { attempts = 3, statuses = TRANSIENT, delay = exponential, fetch: send } = options
+  const methods = (options.methods ?? IDEMPOTENT).map((method) => method.toUpperCase())
 
   return async (url, init) => {
     const next = send ?? fetch
@@ -98,7 +93,6 @@ function retryAfter(response: Response): number | undefined {
   return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now())
 }
 
-// Resolves after `ms`, or rejects with the signal's reason the moment it fires.
 function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
   return new Promise((resolve, reject) => {
     const cancel = () => {
@@ -109,10 +103,13 @@ function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
       cancel()
       return
     }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', abort)
-      resolve()
-    }, ms)
+    const timer = setTimeout(
+      () => {
+        signal?.removeEventListener('abort', abort)
+        resolve()
+      },
+      Number.isFinite(ms) && ms > 0 ? ms : 0,
+    )
     const abort = () => {
       clearTimeout(timer)
       cancel()

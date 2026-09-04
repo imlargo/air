@@ -193,6 +193,9 @@ the signal fires. That signal is also the only cap on `Retry-After`: without one
 says to wait an hour is waited for. Give clients that talk to third parties a
 `signal: () => AbortSignal.timeout(ms)` that covers the retries too.
 
+`retry` decides on the response headers. A failure while air reads the body, a connection that
+drops mid-download, is not retried, because by then the response has been handed over.
+
 The last response is returned as-is, so a status that is still failing throws the usual
 `AirError`.
 
@@ -261,6 +264,10 @@ rejected throws the usual `AirError`. A `ReadableStream` body is not retried.
 The `fetch` your function receives is the underlying one, without `refresh`. Call the renewal
 endpoint with it, or with a client that does not carry `refresh`. Sent through the wrapped
 client, a renewal that itself answered 401 would wait for the refresh it is part of, and hang.
+
+One `refresh` serves one credential, because every request that fails while a renewal is in
+flight receives its result. On the server, create it inside the per-request client, next to the
+per-request `fetch`, never once at module scope for clients that belong to different users.
 
 Anything else an interceptor would do, such as logging, metrics or error translation, is the
 same shape: a function that takes a `fetch` and returns one.

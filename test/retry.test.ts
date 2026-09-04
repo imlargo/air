@@ -49,6 +49,21 @@ describe('retry', () => {
     expect(second.calls).toHaveLength(2)
   })
 
+  it('matches methods in any case', async () => {
+    const { send, calls } = scripted(status(503), ok)
+    await retry({ ...fast, methods: ['post'], fetch: send })(U, { method: 'POST' })
+    expect(calls).toHaveLength(2)
+  })
+
+  it('treats a delay that is not a positive number as no wait', async () => {
+    const { send, calls } = scripted(status(503), status(503), ok)
+    await retry({ delay: (attempt) => (attempt === 1 ? Number.NaN : -5), fetch: send })(
+      U,
+      {},
+    )
+    expect(calls).toHaveLength(3)
+  })
+
   it('does not retry a status outside the list', async () => {
     const { send, calls } = scripted(status(404), ok)
     const response = await retry({ ...fast, fetch: send })(U, {})
