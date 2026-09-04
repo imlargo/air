@@ -181,12 +181,12 @@ Settled. Reopen only with new information.
 - Closures and factory functions, not classes. `AirError` is the one class because it must extend
   `Error`.
 - Named exports; the default export is `air`. `src/index.ts` is the only barrel. Keep `src/` flat.
-- **Comments.** Public exports, their fields and members get TSDoc: one summary sentence, then
-  `@remarks`, `@example`, `@defaultValue`, `@typeParam` or `@internal` as needed. It ships in the
-  `.d.ts` and is what a user sees on hover. Internal code gets `//` comments only for a
-  constraint the code cannot express: a spec rule, a platform behavior, an ordering dependency.
-  One or two lines. No history, no version numbers, no references to tests or other files.
-  History belongs in the changelog and git.
+- **Comments.** None by default. A comment exists only for what the code cannot say: a
+  platform behavior being worked around, an ordering that matters, a cast that needs
+  justifying. One or two lines, no history, no version numbers, no pointers to tests. Public
+  exports get TSDoc only where the name and type do not already say it, because it ships in the
+  `.d.ts`: `@remarks` for a rule a caller must know, `@defaultValue`, `@internal`. A test's name
+  is its documentation; do not restate it above the test.
 - Lint is `typescript-eslint` `strictTypeChecked` and `stylisticTypeChecked`, type-aware, with
   zero warnings. Relax a rule only per directory, with a comment saying why. Currently:
   `no-non-null-assertion` in `test/`.
