@@ -227,7 +227,7 @@ describe('query', () => {
   it('rejects values it cannot serialize meaningfully', async () => {
     mockFetch()
     await air.get('https://api.test/s', {
-      // @ts-expect-error a Date has no obvious serialization — pass an ISO string
+      // @ts-expect-error a Date has no obvious serialization; pass an ISO string
       query: { when: new Date(0) },
     })
   })

@@ -64,4 +64,4 @@ assert.deepEqual([a.from, b.from], ['a', 'b'], 'no shared state between them')
 // A double does not enforce what the platform does: an aborted signal, `duplex` for a stream
 // body, the multipart boundary. Test behavior with doubles and the platform with the platform.
 
-console.log('testing: ok — doubles as arguments, no global stub, two at once')
+console.log('testing: ok, doubles as arguments, no global stub, two at once')

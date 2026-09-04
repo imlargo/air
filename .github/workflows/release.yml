@@ -40,7 +40,7 @@ jobs:
           fi
 
       # A version published without an entry is one nobody can find out what
-      # changed in — and it cannot be republished once it is on npm.
+      # changed in, and it cannot be republished once it is on npm.
       - name: Changelog has an entry for the tag
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -54,7 +54,7 @@ jobs:
       - run: pnpm test
 
       # No NPM_TOKEN: npm dropped 2FA-bypass tokens, so CI authenticates through
-      # trusted publishing instead — npm verifies this workflow's OIDC identity
+      # trusted publishing instead: npm verifies this workflow's OIDC identity
       # against the trusted publisher configured on the package. Requires that
       # setup on npmjs.com (Settings -> Trusted Publisher) to match this repo and
       # this workflow filename, or the publish is rejected.
@@ -64,7 +64,7 @@ jobs:
 
       # A tag on its own renders as an empty page, so anyone arriving from a
       # changelog link or the npm sidebar sees nothing. The entry the step above
-      # already proved exists is the release body — written once, published
+      # already proved exists is the release body: written once, published
       # twice, never drifting apart.
       #
       # Last, deliberately: a release that announces a version npm does not have

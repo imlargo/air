@@ -89,6 +89,6 @@ await assert.rejects(
 assert.equal(renewals, 3, 'exactly one renewal attempt, not an unbounded chain')
 
 console.log(
-  'refresh: ok — 5 concurrent 401s produced 1 renewal; a stuck token failed without looping',
+  'refresh: ok, 5 concurrent 401s produced 1 renewal; a stuck token failed without looping',
 )
 await server.close()

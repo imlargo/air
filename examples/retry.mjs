@@ -77,5 +77,5 @@ await assert.rejects(
 )
 assert.equal(tries, 1, 'an aborted signal stops the loop instead of feeding it')
 
-console.log('retry: ok — honoured Retry-After, and did not retry a cancellation')
+console.log('retry: ok, honoured Retry-After, and did not retry a cancellation')
 await server.close()

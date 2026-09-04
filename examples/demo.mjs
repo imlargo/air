@@ -40,7 +40,7 @@ await section('a client with baseURL + default headers', async () => {
     headers: { 'X-Demo': 'air' },
   })
   const user = await api.get('/users/1')
-  console.log(user.name, '—', user.email)
+  console.log(user.name, '<' + user.email + '>')
 })
 
 await section('a header function survives a token rotation', async () => {
@@ -88,7 +88,7 @@ await section('non-2xx throws an AirError', async () => {
   }
 })
 
-await section('air.raw — the body and the response on a successful call', async () => {
+await section('air.raw: the body and the response on a successful call', async () => {
   const { data, response } = await air.raw.get(
     'https://httpbin.org/response-headers?x-demo=air',
   )
@@ -100,7 +100,7 @@ await section('204 / empty body resolves to null', async () => {
   console.log('result:', result)
 })
 
-await section('timeout via native AbortSignal — no timeout option needed', async () => {
+await section('timeout via native AbortSignal, no timeout option needed', async () => {
   try {
     await air.get('https://httpbin.org/delay/3', { signal: AbortSignal.timeout(500) })
   } catch (error) {
@@ -108,7 +108,7 @@ await section('timeout via native AbortSignal — no timeout option needed', asy
   }
 })
 
-await section('retry via a plain loop — no retry option needed', async () => {
+await section('retry via a plain loop, no retry option needed', async () => {
   const transient = (error) =>
     isAirError(error) && (error.status === undefined || error.status >= 500)
 

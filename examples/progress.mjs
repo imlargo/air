@@ -97,6 +97,6 @@ assert.equal(echoed.received, PAYLOAD.length, 'the server got every byte')
 assert.equal(uploads.at(-1).sent, PAYLOAD.length, 'upload counted the same total')
 
 console.log(
-  `progress: ok — ${downloads.length} download reports, ${uploads.length} upload reports`,
+  `progress: ok, ${downloads.length} download reports, ${uploads.length} upload reports`,
 )
 await server.close()

@@ -133,5 +133,5 @@ assert.equal(q.url, '/s?tag=a&tag=b', 'a repeated key survived')
 const base = await air.get('s', { baseURL: new URL(`${server.url}/v1/`) })
 assert.equal(base.url, '/v1/s', 'a URL baseURL kept its path prefix')
 
-console.log('platform: ok — every check here is one a mock would have let through')
+console.log('platform: ok, every check here is one a mock would have let through')
 await server.close()

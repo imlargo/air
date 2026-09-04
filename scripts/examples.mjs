@@ -16,7 +16,7 @@ const files = readdirSync(dir)
   .sort()
 
 if (files.length === 0) {
-  console.error('examples: found none — did the directory move?')
+  console.error('examples: found none. Did the directory move?')
   process.exit(1)
 }
 

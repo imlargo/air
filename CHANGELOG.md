@@ -46,25 +46,25 @@ the types and the defaults telling the truth.
 - **Error messages no longer end in a space over HTTP/2**, where there is no reason phrase:
   `GET /x failed with 500`, not `failed with 500 `.
 
-## [1.0.0] — 2026-08-19
+## [1.0.0] - 2026-08-19
 
 The API is stable from here: no breaking change without a 2.0. What that covers is the export
-list in [CONTRIBUTING.md](./CONTRIBUTING.md) — `air`, `create`, `AirError`, `isAirError` and
-the exported types — plus the behaviour the README documents. `engines` moving forward as Node
+list in [CONTRIBUTING.md](./CONTRIBUTING.md) (`air`, `create`, `AirError`, `isAirError` and
+the exported types) plus the behaviour the README documents. `engines` moving forward as Node
 versions reach end of life is not a breaking change, and neither is a new optional field.
 
 Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
 ### Added
 
-- **`examples/` — every recipe in the README, runnable and asserted.** Seven files that start
+- **`examples/`: every recipe in the README, runnable and asserted.** Seven files that start
   a local server, exercise the built package over real `fetch`, and check what they claim:
   SSR with an injected `fetch`, refreshing a token on a 401, retry with `Retry-After`,
   download and upload progress, server-sent events, faking the transport in tests, and the
   platform behaviours a mock cannot model. `pnpm examples` runs them; CI runs them on every
   supported Node.
 
-  Not documentation polish — it is the gap all three shipped bugs came through. `duplex` in
+  Not documentation polish: it is the gap all three shipped bugs came through. `duplex` in
   0.2.0, the shared signal in 0.3.1 and the stringified `null` header in 0.5.0 each survived a
   green test run, because the suite mocks `fetch` and a mock agrees with whatever its author
   assumed. All three are now pinned against a real socket.
@@ -75,7 +75,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   because narrowing `AirOptions` had left `error.request.options` unnameable, and it was the
   fastest way to close that. The name did not explain itself, and a third options type is one
   more thing to learn for no gain. `AirRequest.options` is now `AirOptions | StreamOptions`,
-  written out, and `StreamOptions` — the streaming shape, `parse` required — is exported in its
+  written out, and `StreamOptions`, the streaming shape with `parse` required, is exported in its
   place. It is also useful on its own, for building the options as a value:
 
   ```ts
@@ -90,17 +90,17 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 - **`parse: 'stream'` is no longer accepted as a client default.**
   `air.create({ parse: 'stream' })` is a compile error. It was the one case where the option sat
   out of reach of the call site's signature, so `create({ parse: 'stream' }).get<User>('/x')`
-  compiled and lied — the last documented hole in `parse`, now closed rather than described. A
+  compiled and lied. It was the last documented hole in `parse`, now closed rather than described. A
   client sends requests to many endpoints, and "every response here is an unread stream" is not
   a thing to mean; pass it per call.
 
-## [0.5.0] — 2026-08-19
+## [0.5.0] - 2026-08-19
 
 ### Added
 
 - **`null` removes an inherited header.** Every option could already be opted out of per
-  request — `baseURL: undefined`, `query: { key: undefined }`, `signal: null`,
-  `fetch: undefined` — except headers, which had no way at all: `''` sends an empty header,
+  request (`baseURL: undefined`, `query: { key: undefined }`, `signal: null`,
+  `fetch: undefined`) except headers, which had no way at all: `''` sends an empty header,
   which is not the same as absent, and a function only ever adds. An authenticated client with
   one public endpoint meant abandoning `create()` and re-specifying everything on a fresh client.
 
@@ -113,12 +113,12 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
   `undefined` does the same, so `{ Authorization: signedIn ? token : undefined }` works as
   written instead of sending the string `"undefined"`. Removal is for the plain-object form
-  only — a `Headers` instance cannot represent "delete" — so setting a header stays uniform
+  only, since a `Headers` instance cannot represent "delete", so setting a header stays uniform
   across every shape and removing one is record-only.
 
 - **`query` accepts a `URLSearchParams` or an array of `[key, value]` tuples**, not just the
-  record. Both are what you already hold when the params came from somewhere else — the current
-  URL, a form, another library — and handing one over beats converting it, because
+  record. Both are what you already hold when the params came from somewhere else, such as the
+  current URL, a form or another library, and handing one over beats converting it, because
   `Object.fromEntries` keeps only the last of a repeated key and turns `?tag=a&tag=b` into
   `?tag=b`. All three merge with a client's default `query` identically.
 
@@ -127,7 +127,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   ```
 
   Values stay primitives-only in every shape. A different convention for dates or nested
-  objects is still yours to write — and now its output plugs straight into `query`.
+  objects is still yours to write, and now its output plugs straight into `query`.
 
 - **`baseURL` accepts a `URL`**, matching the request target, which has taken one since 0.1.0.
 
@@ -156,7 +156,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
   Every other mode is unchanged and still takes the `<T>` you assert, since only you know what
   the endpoint returns. A mistyped mode (`parse: 'respons'`) is still caught. If you were
-  writing the redundant generic, drop it — that is the only source change this needs.
+  writing the redundant generic, drop it. That is the only source change this needs.
 
   One case no signature can reach, now documented: a client-level
   `air.create({ parse: 'stream' })` puts the option nowhere near the call site, so `<T>` there
@@ -165,18 +165,18 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 ### Changed
 
 - **`engines.node` is now `>=20`**, up from `>=18`. The README told users to compose signals
-  with `AbortSignal.any`, which needs 20.3 — so on the version we claimed to support, our own
+  with `AbortSignal.any`, which needs 20.3, so on the version we claimed to support our own
   documentation handed you a `TypeError`. Node 18 has been end-of-life since April 2025, and
   the CI matrix now runs 20, 22 and 24.
 
-## [0.4.1] — 2026-08-18
+## [0.4.1] - 2026-08-18
 
 ### Fixed
 
 - **A streaming endpoint no longer hangs forever.** Content-type detection sent
   `text/event-stream` to `text` and `application/x-ndjson` to `blob`, and every parse mode but
-  `stream` reads the body to completion. Against a real SSE or NDJSON endpoint — one that stays
-  open, which is the entire point of both — the promise never settled. Not a failure you could
+  `stream` reads the body to completion. Against a real SSE or NDJSON endpoint, one that stays
+  open because that is the entire point of both, the promise never settled. Not a failure you could
   catch: the request had succeeded, the bytes were arriving, and there was no status to inspect,
   no `AirError`, nothing to log.
 
@@ -186,9 +186,9 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
   `text/event-stream`, `application/x-ndjson` and `application/jsonl` are now detected as
   `stream` and handed back unread. `application/octet-stream` is deliberately not on the list,
-  despite the name — a binary download ends, and it stays a `Blob`.
+  despite the name: a binary download ends, and it stays a `Blob`.
 
-  Worth knowing if you were pointing `air` at a **finite** response with one of those types —
+  Worth knowing if you were pointing `air` at a **finite** response with one of those types,
   the one case the old behavior actually worked for. It now arrives as a `ReadableStream` rather
   than a `String` or a `Blob`, and `parse` overrides detection in both directions:
 
@@ -199,11 +199,11 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   This is not a parser and not an `EventSource`: `air` hands back the stream, and reading frames
   out of it stays in userland.
 
-## [0.4.0] — 2026-08-17
+## [0.4.0] - 2026-08-17
 
 ### Added
 
-- **`client.raw` — the parsed body _and_ the response.** Every client now carries a `raw` twin
+- **`client.raw`: the parsed body _and_ the response.** Every client now carries a `raw` twin
   with the same call shape and the same seven methods, resolving to `{ data, response }`:
 
   ```ts
@@ -212,7 +212,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   ```
 
   It changes nothing else: same request, same parsing, same options, and `data` is exactly what
-  the plain client would have given you. A non-2xx still throws from both — `error.response` is
+  the plain client would have given you. A non-2xx still throws from both; `error.response` is
   how you hold a failed response.
 
 - **`parse: 'stream'`** hands back the body unread as a `ReadableStream`, typed, without going
@@ -221,7 +221,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 ### Changed
 
 - **Breaking: `parse: 'response'` is gone**, replaced by the two above. It was doing two unrelated
-  jobs — deciding how to read the body and deciding what the call returned — and paid for it: you
+  jobs, deciding how to read the body and deciding what the call returned, and paid for it: you
   could have the body or the headers but never both, and `<T>` had to be kept in sync with the
   option by hand, so `api.get<User>('/u', { parse: 'response' })` compiled and handed you a
   `Response` typed as a `User`. `parse` now only ever describes the body's shape.
@@ -236,7 +236,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   const body = await api.get<ReadableStream>('/download', { parse: 'stream' }) // unread body
   ```
 
-## [0.3.1] — 2026-08-11
+## [0.3.1] - 2026-08-11
 
 ### Fixed
 
@@ -244,7 +244,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   points you at `AbortSignal.timeout(ms)` instead, but writing one into `air.create()` gave
   you a single signal shared by every request that client would ever make, with its clock
   started at `create()` time. Five seconds later it fired, and because a fired signal stays
-  fired — and `fetch` rejects an already-aborted signal before sending anything — every
+  fired, and `fetch` rejects an already-aborted signal before sending anything, every
   request after that failed instantly, without leaving the process:
 
   ```ts
@@ -260,7 +260,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
   Same fix as lazy `headers`, and it changes nothing about how the signal is treated: still
   forwarded to `fetch` untouched, still no `AbortController` or signal composition inside the
-  client. A request-level `signal` replaces the client's rather than combining with it —
+  client. A request-level `signal` replaces the client's rather than combining with it;
   compose them with `AbortSignal.any` in your own function if you want both. Returning
   `undefined` opts a single request out of the client's budget.
 
@@ -271,11 +271,11 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
 - **`SignalSource` type**, exported: `AbortSignal | (() => AbortSignal | null | undefined)`.
 
-## [0.3.0] — 2026-08-08
+## [0.3.0] - 2026-08-08
 
 ### Added
 
-- **`fetch` option** — hand `air` the function it should call instead of the global `fetch`.
+- **`fetch` option**: hand `air` the function it should call instead of the global `fetch`.
   This is for server-side rendering: SvelteKit's `event.fetch` and the equivalents in Remix,
   Astro and Nuxt forward the incoming request's cookies and headers, resolve a relative URL
   against the current page, and answer a request to your own app by invoking the route
@@ -298,7 +298,7 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
   (`(input: string, init: RequestInit) => Promise<Response>`), so a framework wrapper typed
   as `typeof fetch` and a hand-written test double are both assignable.
 
-## [0.2.0] — 2026-08-06
+## [0.2.0] - 2026-08-06
 
 ### Added
 
@@ -313,10 +313,10 @@ Two entries below break 0.5.0, which is why this is 1.0.0 rather than 0.6.0.
 
 - **Streaming request bodies threw at runtime.** `fetch` refuses a `ReadableStream` body
   unless told `duplex: 'half'`, so an upload documented as supported did not work. The test
-  suite could not have caught it — it mocks `fetch`, and a mock does not enforce the
+  suite could not have caught it: it mocks `fetch`, and a mock does not enforce the
   requirement. Found by sending a stream to a real server.
 
-## [0.1.0] — 2026-08-06
+## [0.1.0] - 2026-08-06
 
 Initial release. A tiny, ESM-only HTTP client over native `fetch`, with zero runtime
 dependencies.
@@ -328,7 +328,7 @@ dependencies.
   parent.
 - `baseURL` joining that does not double slashes, and `query` serialization for primitives
   and arrays of primitives.
-- Automatic body detection — `FormData`, `URLSearchParams`, `Blob`, `ArrayBuffer`, typed
+- Automatic body detection: `FormData`, `URLSearchParams`, `Blob`, `ArrayBuffer`, typed
   arrays and streams pass through untouched; anything else is JSON, with the `Content-Type`
   set for you.
 - Response parsing inferred from `Content-Type`, overridable with `parse`, including
@@ -340,7 +340,7 @@ dependencies.
   correct across a token refresh.
 - `string | URL` as the request target.
 
-No timeout or retry options, by design — `AbortSignal.timeout()` and a `for` loop cover both,
+No timeout or retry options, by design. `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
 [Unreleased]: https://github.com/imlargo/air/compare/v1.0.0...HEAD

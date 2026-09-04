@@ -64,7 +64,7 @@ assert.ok(raw.includes('id: 2'), 'ids survive; you need them to resume')
 assert.equal(raw.split('\n\n').length, 1, "a '\\n\\n' split finds no frames here at all")
 assert.equal(raw.split('\r\n\r\n').length, 4, 'the spec-correct split finds them')
 
-console.log('sse: ok — streamed unbuffered, over a connection EventSource cannot open')
+console.log('sse: ok, streamed unbuffered, over a connection EventSource cannot open')
 await server.close()
 
 // Reconnection: send the last id seen as `Last-Event-ID` on the next attempt.

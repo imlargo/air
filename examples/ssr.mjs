@@ -61,5 +61,5 @@ await air.get(`${server.url}/x`, {
 })
 assert.equal(seen.fetch, undefined, 'the option is consumed, not forwarded')
 
-console.log('ssr: ok — per-request fetch carried its own cookies, baseURL intact')
+console.log('ssr: ok, per-request fetch carried its own cookies, baseURL intact')
 await server.close()
