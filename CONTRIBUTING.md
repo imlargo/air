@@ -23,9 +23,12 @@ and the fields on `AirError` exist because that question found a dead end.
 
 ### Non-goals
 
-Interceptor chains and lifecycle hooks. A plugin system. Retries, backoff or timeouts, as an
-option or as an exported helper. Caching, deduplication or queuing. axios compatibility.
-Node-only features.
+Inside the client: interceptor chains and lifecycle hooks, a plugin system, retries, backoff,
+timeouts, progress, caching, deduplication or queuing, axios compatibility, Node-only features.
+
+Outside the client, under its own import path, a utility may exist when it meets the rules in
+Utilities below. Retry and refresh do; caching and deduplication do not, because they need
+state shared across calls that no signature can make explicit.
 
 ## Public API
 
@@ -36,6 +39,12 @@ else. `AnyOptions` and `HeaderInit` are internal.
 
 `air` is `create()` with no defaults, so there is one implementation. A client is callable
 (`GET`), has one shortcut per method, a `raw` twin, and `create()`.
+
+Utilities live under subpaths, each with its own export list: `@imlargo/air/retry` (`retry`,
+`RetryOptions`), `/refresh` (`refresh`, `RefreshOptions`), `/progress` (`progress`,
+`ProgressOptions`, `Progress`), `/form` (`toFormData`, `FormRecord`, `FormValue`) and `/query`
+(`toQueryParams`, `QueryParamsOptions`, `QueryParamValue`). The root list does not grow for
+them.
 
 | Option    | Type                                          | Rule                                                          |
 | --------- | --------------------------------------------- | ------------------------------------------------------------- |
@@ -145,6 +154,32 @@ exactly once, with or without per-request options. Do not add a path that skips 
 - The message names `timed out` and `was aborted` for the platform's own abort reasons. A custom
   `abort(reason)` is `failed: <reason>`.
 
+### Utilities
+
+- **One import path per utility**, built as its own tsdown entry. A utility imports only types
+  from `src/`, never runtime code, so each built file is self-contained. `scripts/smoke.mjs`
+  asserts that, and that the root entry stays under its size budget.
+- **A wrapper is `(options) => Fetch`**, takes the same `fetch` option the client does, and
+  resolves the global `fetch` per call when none is given. Wrappers compose by nesting; there
+  is no `compose` helper until someone needs three layers often enough to ask.
+- **A wrapper sees `(url, init)` and the `Response`, and nothing of air's.** Configuration is
+  set where the wrapper is created. Per-request configuration never travels through unknown
+  `init` keys: `fetch` may grow a member with the same name, as `retryOptions` is doing in
+  Chromium, and the collision would be silent.
+- **A utility earns its place with a correctness trap and a track record**: it is easy to get
+  wrong by hand (a retry that repeats a cancellation, a refresh without single-flight, a
+  progress total under content-encoding) and it already exists, in the same shape, in more
+  than one real codebase. A helper that is trivially correct stays a recipe.
+- **Retry must not be able to repeat what must not be repeated**: only listed methods,
+  idempotent by default; never a `ReadableStream` body; never after the caller's signal has
+  fired, checked on the signal rather than on the error's name; and the wait itself ends when
+  the signal fires.
+- **Refresh runs the caller's `headers` once per burst**, single-flighted, retries exactly once,
+  and keeps `method`, `body` and `signal` from the original request.
+- **Progress preserves what `raw` reads**: status, headers, `url` and `redirected` are copied
+  onto the wrapped response, since the `Response` constructor cannot set the last two.
+- Every utility has a test file and an asserted example, like the client.
+
 ### Types
 
 `<T>` defaults to `unknown`, never `any`. Every call resolves to `T | null`, because a `204` or
@@ -160,7 +195,11 @@ Settled. Reopen only with new information.
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No `timeout` option                                    | Bridging a timeout with the caller's signal needs an `AbortController` torn down at the right moment; the obvious moment leaves the body download uncovered. Forwarding `signal` unchanged has no such moment.                                                                              |
 | `signal` may be a function                             | A signal in client defaults is one instance for every request; once fired, the client is dead. The function only chooses the signal; forwarding stays unchanged.                                                                                                                            |
-| No retry option or helper                              | A retry loop must tell a cancellation from a transient failure, and only the caller's signal can. Name-sniffing `AbortError` misclassifies `abort(reason)`.                                                                                                                                 |
+| No retry inside the client; `retry` as a utility       | A retry must tell a cancellation from a transient failure, and only the caller's signal can. The first helper sniffed the error's name and was removed. The utility checks `init.signal.aborted`, which a `fetch` wrapper receives, so the information travels with the decision.           |
+| Utilities inside the package, under subpaths           | One install, one version, shared types and CI. Subpaths keep the root export list, which is the stability contract, untouched, and make the client-or-utility boundary visible in the import.                                                                                               |
+| No `compose` helper                                    | Wrappers take `fetch` as an option and nest, which is one concept instead of two. Revisit when three-layer stacks are common.                                                                                                                                                               |
+| No per-request wrapper options via unknown `init` keys | It works today because `fetch` ignores unknown members, and stops working silently the day one is standardized. `retryOptions` is already in Chromium.                                                                                                                                      |
+| Upload progress stays a recipe                         | A counting `ReadableStream` as `body` needs no wrapper, and Firefox and Safari cannot stream request bodies at all.                                                                                                                                                                         |
 | `headers` may be a function                            | A plain object is frozen at `create()`; a refreshed token is the common case.                                                                                                                                                                                                               |
 | `null` removes a header, record-only                   | The alternative, a function of the inherited headers, is one step from a `beforeRequest` hook.                                                                                                                                                                                              |
 | `fetch` is an option                                   | On the server the global `fetch` is the wrong function, and the right one exists only inside a request.                                                                                                                                                                                     |
@@ -178,7 +217,7 @@ Settled. Reopen only with new information.
 | No custom parser option                                | `parse: 'text'` plus your own `JSON.parse` is one line.                                                                                                                                                                                                                                     |
 | No nested query serialization                          | Implicit `[object Object]` or JSON encoding is the magic the primitive-only type prevents. Build the params yourself and pass them.                                                                                                                                                         |
 | No `dispatcher` / `agent` typed fields                 | Node-only. Still forwarded when passed.                                                                                                                                                                                                                                                     |
-| No schema validation                                   | `Schema.parse(await api.get(...))` is one line, and an adapter surface is a plugin system.                                                                                                                                                                                                  |
+| No `schema` option                                     | Fails the first filter question: `User.parse(await api.get(...))` is one line with the same inference. Standard Schema removed the adapter problem, not the redundancy. Documented as a recipe; revisit if users ask for it in numbers.                                                     |
 | No progress callbacks                                  | A `fetch` wrapper with a `TransformStream` does it; see `examples/progress.mjs`.                                                                                                                                                                                                            |
 | Errors expose `request` and `response` as plain fields | Redaction before logging is the app's job.                                                                                                                                                                                                                                                  |
 | Published as `@imlargo/air`                            | `air` was taken on npm, and a user scope needs no organization. 1.x shipped as `@korastd/air`, deprecated in favour of this name at 2.0.0.                                                                                                                                                  |
@@ -196,7 +235,7 @@ Settled. Reopen only with new information.
   is its documentation; do not restate it above the test.
 - Lint is `typescript-eslint` `strictTypeChecked` and `stylisticTypeChecked`, type-aware, with
   zero warnings. Relax a rule only per directory, with a comment saying why. Currently:
-  `no-non-null-assertion` in `test/`.
+  `no-non-null-assertion` and `require-await` in `test/`.
 
 ## Testing
 
@@ -211,7 +250,8 @@ Settled. Reopen only with new information.
 - Verify a type-level claim by compiling it against the built `dist/` from a consumer project,
   not by reasoning about it.
 - `scripts/smoke.mjs` imports the built `dist/` on plain Node with no syntax newer than Node 20,
-  and CI runs it on the oldest supported version.
+  and CI runs it on the oldest supported version, on Bun and on Deno. It also guards the
+  package shape: the root entry under 3.5 kB gzip and every entry free of runtime imports.
 - `examples/` is the integration lane. Each file starts a local server, runs the built `dist/`
   over real `fetch`, and asserts. Recipe above a `--- the recipe ---` marker, assertions below
   `--- what it proves ---`. `_server.mjs` is the shared harness; `demo.mjs` hits third parties

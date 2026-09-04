@@ -10,6 +10,32 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-04
+
+Five utilities, each under its own import path. The client is unchanged and its root export
+list does not grow; import a utility and you load exactly one small file.
+
+### Added
+
+- **`retry` from `@imlargo/air/retry`.** A `fetch` that retries transient failures: network
+  errors and `408`, `425`, `429`, `500`, `502`, `503`, `504`, up to `attempts` in total,
+  honouring `Retry-After`. Idempotent methods only by default, never a `ReadableStream` body,
+  and never once the caller's signal has fired, which also ends the wait between attempts.
+  Replaces the hand-written loop the README used to show.
+- **`refresh` from `@imlargo/air/refresh`.** A `fetch` that, on a `401`, runs your `headers`
+  function once per burst of concurrent failures and re-sends each request once with the
+  result. Replaces the README recipe, single-flight included.
+- **`progress` from `@imlargo/air/progress`.** A `fetch` that reports `{ loaded, total }` after
+  every chunk while air reads the body. Status, headers, `url` and `redirected` survive, so
+  `raw` sees the same response.
+- **`toFormData` from `@imlargo/air/form`.** A flat record to `FormData`: nullish dropped,
+  arrays repeated, a `File` keeps its name. Nested objects are a compile error.
+- **`toQueryParams` from `@imlargo/air/query`.** Nested objects and dates to a
+  `URLSearchParams` for `query`, with the convention stated: ISO dates, bracket keys, and
+  arrays as repeated keys, `[]` or commas.
+- **README:** a validation recipe with Standard Schema, a migration table from ky, ofetch and
+  axios, and a Scope section that says what is left out, why, and what would change that.
+
 ## [2.0.0] - 2026-09-04
 
 Three entries under Changed break 1.x: the package name, and two defaults that now tell the
@@ -352,7 +378,8 @@ dependencies.
 No timeout or retry options, by design. `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/imlargo/air/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/imlargo/air/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/imlargo/air/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/imlargo/air/compare/v0.4.1...v0.5.0

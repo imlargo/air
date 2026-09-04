@@ -5,11 +5,12 @@
 
 A tiny HTTP client for TypeScript, built on native `fetch`.
 
-- Zero runtime dependencies. ESM only. About 2.5 kB min+gzip.
+- Zero runtime dependencies. ESM only. The client is about 2 kB min+gzip.
 - A call resolves to the parsed body. Non-2xx responses throw.
 - Bring your own `fetch`, for server-side rendering and for tests.
-- No timeout, retry or interceptor machinery. `AbortSignal` and a function you write cover them.
-- Node 20+, browsers, Deno, Bun and edge runtimes.
+- No timeout, retry or interceptor machinery in the client. Retry, token refresh, download
+  progress and two serializers ship as separate imports that wrap `fetch`; see [Utilities](#utilities).
+- Node 20+, browsers, Deno, Bun and edge runtimes, all verified in CI.
 
 ```bash
 pnpm add @imlargo/air
@@ -86,6 +87,36 @@ await api.get('/users', { cf: { cacheTtl: 60 } })
 
 `AirOptions` has no index signature by design, so a typo such as `parse: 'respons'` stays an error.
 
+## Utilities
+
+Everything that is not the client lives under its own import path, so the client never grows
+and you load only what you use:
+
+| Import                  | Exports         | Does                                                       |
+| ----------------------- | --------------- | ---------------------------------------------------------- |
+| `@imlargo/air/retry`    | `retry`         | A `fetch` that retries transient failures                  |
+| `@imlargo/air/refresh`  | `refresh`       | A `fetch` that refreshes credentials on a 401              |
+| `@imlargo/air/progress` | `progress`      | A `fetch` that reports download progress                   |
+| `@imlargo/air/form`     | `toFormData`    | A flat record to `FormData`, for `body`                    |
+| `@imlargo/air/query`    | `toQueryParams` | Nested objects and dates to `URLSearchParams`, for `query` |
+
+The three wrappers take the same `fetch` option the client does, and default to the global
+`fetch`. Compose them by nesting; the outer one runs first:
+
+```ts
+import { retry } from '@imlargo/air/retry'
+import { progress } from '@imlargo/air/progress'
+
+const api = air.create({
+  baseURL: 'https://api.example.com',
+  fetch: retry({ attempts: 3, fetch: progress({ onProgress }) }),
+})
+```
+
+A wrapper sees the request and the response, which is all an interceptor sees. It does not
+see air's options or its parsed body, so configure it where you create the client, and derive
+a client when one endpoint needs a different configuration.
+
 ## Fetch
 
 On the server, frameworks hand each incoming request its own `fetch`. It carries that request's
@@ -144,31 +175,21 @@ Do not write a signal instance into a client's defaults. A signal is single-use,
 
 ## Retries
 
-Write the loop. It is shorter than any option, and it can see your `AbortSignal`, which is how
-a cancellation is told apart from a transient failure.
-
 ```ts
-import air, { isAirError } from '@imlargo/air'
+import { retry } from '@imlargo/air/retry'
 
-const transient = (error: unknown) =>
-  isAirError(error) && (error.status === undefined || error.status >= 500)
-
-async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal, attempts = 3) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      if (attempt >= attempts || signal.aborted || !transient(error)) throw error
-      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100))
-    }
-  }
-}
-
-await withRetry(() => api.get('/slow', { signal: AbortSignal.timeout(2000) }), signal)
+const api = air.create({ fetch: retry({ attempts: 3 }) })
 ```
 
-Build the request inside the callback so each attempt gets a fresh signal. See
-[`examples/retry.mjs`](./examples/retry.mjs) for `429` and `Retry-After`.
+`retry` repeats a request on a network failure or on `408`, `425`, `429`, `500`, `502`, `503`
+or `504`, up to `attempts` in total, waiting `Retry-After` when the server sends it and an
+exponential delay otherwise. It only repeats idempotent methods by default, so a `POST` is sent
+once unless you list it in `methods`, and it never repeats a `ReadableStream` body, which the
+first attempt consumed. A request whose signal has fired is never retried, and the wait between
+attempts ends the moment the signal fires; the signal is also what caps a long `Retry-After`.
+
+The last response is returned as-is, so a status that is still failing throws the usual
+`AirError`.
 
 ## Headers
 
@@ -204,39 +225,33 @@ const token = () => (inFlight ??= refresh().finally(() => (inFlight = null)))
 
 ## Refreshing a token on a 401
 
-A header function runs before the request; it cannot see a 401. A `fetch` wrapper can:
+A header function runs before the request; it cannot see a 401. `refresh` can:
 
 ```ts
-let access = getToken()
-let inFlight: Promise<string> | null = null
+import { refresh } from '@imlargo/air/refresh'
 
-const renew = () =>
-  (inFlight ??= refreshToken()
-    .then((token) => (access = token))
-    .finally(() => (inFlight = null)))
+const session = { token: getToken() }
 
 const api = air.create({
   baseURL: 'https://api.example.com',
-  headers: () => ({ Authorization: `Bearer ${access}` }),
-  fetch: async (url, init) => {
-    const response = await fetch(url, init)
-    if (response.status !== 401) return response
-
-    response.body?.cancel()
-    const token = await renew()
-    const headers = new Headers(init.headers)
-    headers.set('Authorization', `Bearer ${token}`)
-    return fetch(url, { ...init, headers })
-  },
+  headers: () => ({ Authorization: `Bearer ${session.token}` }),
+  fetch: refresh({
+    headers: async () => {
+      session.token = await renewToken()
+      return { Authorization: `Bearer ${session.token}` }
+    },
+  }),
 })
 ```
 
-- Deduplicate the renewal, or concurrent 401s race and the last one wins.
-- Retry once. A token that is still rejected surfaces as an `AirError`.
-- `init.signal` is the caller's, so the retry shares the original deadline.
-- A `ReadableStream` body cannot be replayed. Other body types retry fine.
+Your `headers` function runs once per burst, however many requests hit a 401 at the same
+moment, and every one of them is re-sent with what it returns. Storing the new token for later
+requests is its job too, which is why it is written as above. The retry happens exactly once,
+carries the caller's signal so it shares the original deadline, and a token that is still
+rejected throws the usual `AirError`. A `ReadableStream` body is not retried.
 
-The same shape covers logging, metrics and error translation. Wrappers compose.
+Anything else an interceptor would do, such as logging, metrics or error translation, is the
+same shape: a function that takes a `fetch` and returns one.
 
 ## Query
 
@@ -263,7 +278,20 @@ await api.get('/search', {
 })
 ```
 
-For a different serialization convention, build the params yourself and pass the result.
+For nested objects and dates, `toQueryParams` states a convention and returns a
+`URLSearchParams` that `query` accepts:
+
+```ts
+import { toQueryParams } from '@imlargo/air/query'
+
+await api.get('/search', {
+  query: toQueryParams({ filter: { since: new Date(), tags: ['a', 'b'] } }),
+})
+// /search?filter[since]=2026-09-04T...&filter[tags]=a&filter[tags]=b
+```
+
+A `Date` becomes its ISO string, a nested object becomes bracket keys, and arrays repeat the
+key, or use `[]` or commas with `arrays: 'brackets' | 'comma'`.
 
 ## Body
 
@@ -272,6 +300,15 @@ set. `FormData`, `URLSearchParams`, `Blob`, `File`, `ArrayBuffer`, typed arrays,
 and strings are sent as-is. `FormData` never gets a `Content-Type`, even one you set, so the
 runtime can write the multipart boundary. A `ReadableStream` gets `duplex: 'half'`, which `fetch`
 requires. `GET` and `HEAD` never send a body.
+
+`toFormData` builds a `FormData` from a flat record, dropping `null` and `undefined`,
+repeating a key for arrays, and keeping a `File`'s name:
+
+```ts
+import { toFormData } from '@imlargo/air/form'
+
+await api.post('/upload', { body: toFormData({ title, tags: ['q3', 'final'], file }) })
+```
 
 ## Response
 
@@ -337,7 +374,20 @@ for (;;) {
 ```
 
 Use `getReader()` rather than `for await`: async iteration over a `ReadableStream` is not
-available in Safari or Firefox.
+available in Safari or Firefox. For a body you want parsed rather than streamed, `progress`
+reports the same numbers while air reads it:
+
+```ts
+import { progress } from '@imlargo/air/progress'
+
+const api = air.create({
+  fetch: progress({ onProgress: ({ loaded, total }) => render(loaded, total) }),
+})
+```
+
+`total` comes from `Content-Length` and is absent when the header is. Upload progress needs
+no wrapper: hand `body` a `ReadableStream` that counts as it is read, as in
+[`examples/progress.mjs`](./examples/progress.mjs).
 
 ## Errors
 
@@ -388,21 +438,85 @@ const user = await api.get<User>('/users/1')
 if (!user) throw new Error('expected a body')
 ```
 
+## Validation
+
+To turn the assertion into a check, parse the body with your schema library. The type comes
+from the schema, `null` included or not as the schema says, and there is no `<T>` to get wrong:
+
+```ts
+const user = User.parse(await api.get('/users/1')) // zod, valibot, arktype, ...
+```
+
+Any library that implements [Standard Schema](https://standardschema.dev) works the same way,
+and a one-line helper covers all of them:
+
+```ts
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+
+async function parse<S extends StandardSchemaV1>(schema: S, value: unknown) {
+  const result = await schema['~standard'].validate(value)
+  if (result.issues) throw new Error(JSON.stringify(result.issues))
+  return result.value as StandardSchemaV1.InferOutput<S>
+}
+
+const user = await parse(User, await api.get('/users/1'))
+```
+
+air does not take a `schema` option because this line already does the job, with the same
+inference. See [Scope](#scope) for how that could change.
+
+## Migrating from ky, ofetch or axios
+
+| You wrote                  | ky                                | ofetch                        | axios                            | air                                                    |
+| -------------------------- | --------------------------------- | ----------------------------- | -------------------------------- | ------------------------------------------------------ |
+| Base URL, path prefix kept | `prefix`                          | `baseURL`                     | `baseURL`                        | `baseURL`                                              |
+| Query params               | `searchParams`                    | `query`                       | `params`                         | `query`                                                |
+| JSON body                  | `json: data`                      | `body: data`                  | second argument                  | `body: data`                                           |
+| Read the body              | `await ky.get(url).json<T>()`     | `await $fetch<T>(url)`        | `(await axios.get<T>(url)).data` | `await api.get<T>(url)`                                |
+| Body and headers together  | the `Response`                    | `$fetch.raw`                  | the response object              | `api.raw.get`                                          |
+| Non-2xx                    | throws `HTTPError`                | throws `FetchError`           | throws `AxiosError`              | throws `AirError`                                      |
+| Parsed error body          | `await error.response.json()`     | `error.data`                  | `error.response.data`            | `error.data`                                           |
+| Timeout                    | `timeout: 5000` (10 s by default) | `timeout: 5000`               | `timeout: 5000`                  | `signal: () => AbortSignal.timeout(5000)`              |
+| Retry                      | `retry` (2 by default)            | `retry` (1 on GET by default) | none                             | `fetch: retry()` from `@imlargo/air/retry`, opt-in     |
+| Hooks and interceptors     | `hooks`                           | `onRequest`, `onResponse`     | `interceptors`                   | a function around `fetch`; see [Utilities](#utilities) |
+| Per-request `fetch`        | `fetch`                           | `fetch`                       | adapter                          | `fetch`                                                |
+| Remove an inherited header | not possible                      | not possible                  | `null`                           | `null`                                                 |
+| Streams and SSE            | read the `Response` yourself      | `responseType: 'stream'`      | `responseType: 'stream'`         | detected from `Content-Type`, or `parse: 'stream'`     |
+
+Two defaults differ on purpose. air has no default timeout: a request runs until the caller's
+signal says otherwise. And air never retries unless you add `retry`, where ofetch retries a
+`GET` once on its own.
+
+## Scope
+
+air leaves out caching, request deduplication, queuing, lifecycle hooks, a second transport,
+CJS and nested query serialization in the client. Each has a written reason in
+[CONTRIBUTING.md](./CONTRIBUTING.md), and the test a feature has to pass is there too: can a
+caller already do it with `fetch`, `signal`, `raw` or a loop; does it need information only
+the caller has; is it something userland cannot reach; does the signature still say what it does.
+
+That list is a position, not a dogma. Two of the utilities above started as recipes in this
+README and moved into the package when they showed up, in the same shape, across several
+production codebases. If something is requested often and passes the test, it can be added,
+in the client or as another import path. If it is requested often and fails the test, the
+answer is a recipe here and a reason there. Open an issue either way.
+
 ## Examples
 
 Each recipe above is a runnable file in [`examples/`](./examples). They start a local server,
 run the built package over real `fetch`, and assert what they show. CI runs them on every
 supported Node version.
 
-| File                                      | Shows                                                 |
-| ----------------------------------------- | ----------------------------------------------------- |
-| [`ssr.mjs`](./examples/ssr.mjs)           | A per-request `fetch` carrying its own cookies        |
-| [`refresh.mjs`](./examples/refresh.mjs)   | Refreshing a token on a 401, single-flighted          |
-| [`retry.mjs`](./examples/retry.mjs)       | Retry honoring `Retry-After`, never on a cancellation |
-| [`progress.mjs`](./examples/progress.mjs) | Download and upload progress                          |
-| [`sse.mjs`](./examples/sse.mjs)           | Server-sent events, and when `EventSource` is enough  |
-| [`testing.mjs`](./examples/testing.mjs)   | Faking the transport without a global stub            |
-| [`platform.mjs`](./examples/platform.mjs) | Behaviors only a real socket can confirm              |
+| File                                        | Shows                                                    |
+| ------------------------------------------- | -------------------------------------------------------- |
+| [`ssr.mjs`](./examples/ssr.mjs)             | A per-request `fetch` carrying its own cookies           |
+| [`refresh.mjs`](./examples/refresh.mjs)     | `refresh`: one renewal for five concurrent 401s          |
+| [`retry.mjs`](./examples/retry.mjs)         | `retry`: `Retry-After`, no POST, no retry after an abort |
+| [`progress.mjs`](./examples/progress.mjs)   | `progress` for downloads, a counting stream for uploads  |
+| [`serialize.mjs`](./examples/serialize.mjs) | `toQueryParams` and `toFormData` against a server        |
+| [`sse.mjs`](./examples/sse.mjs)             | Server-sent events, and when `EventSource` is enough     |
+| [`testing.mjs`](./examples/testing.mjs)     | Faking the transport without a global stub               |
+| [`platform.mjs`](./examples/platform.mjs)   | Behaviors only a real socket can confirm                 |
 
 ```bash
 pnpm examples
