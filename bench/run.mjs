@@ -37,14 +37,34 @@ const serverReport = await server({ rounds })
 const behaviorReport = await behavior()
 const minutes = ((performance.now() - started) / 60_000).toFixed(1)
 
+// Three ways a run can be untrustworthy, each stated at the top rather than left for the
+// reader to notice: too few rounds to estimate noise, a machine that was already busy, and a
+// baseline that would not hold still.
 const noisePct = Math.round(serverReport.noise * 100)
-const noisy = serverReport.noise > 0.15
+const warnings = []
+if (rounds < 3) {
+  warnings.push(
+    `**${rounds} round${rounds === 1 ? '' : 's'} only.** Noise cannot be estimated from fewer than 3 rounds; the percentages below are single measurements, not results. Use this run to check that the benchmark works, not to quote from.`,
+  )
+}
+if (env.loadBefore > env.threads) {
+  warnings.push(
+    `**Busy machine.** Load average was ${env.loadBefore} on ${env.threads} threads before the run started. Something else was competing for the CPU; the figures below are not comparable to a quiet run.`,
+  )
+}
+if (rounds >= 3 && serverReport.noise > 0.15) {
+  warnings.push(
+    `**Noisy environment.** The baseline \`fetch\` throughput varied ${noisePct} % across rounds. Only differences well above that are meaningful.`,
+  )
+}
 const lines = [
   '# air benchmark',
   '',
-  noisy
-    ? `> **Noisy environment.** The baseline \`fetch\` throughput varied ${noisePct} % across rounds. Only differences well above that are meaningful; read the rest of this report as indicative.`
-    : `> Baseline \`fetch\` throughput varied ${noisePct} % across rounds. Rows within twice that of the baseline are marked ≈ and should be read as equal.`,
+  ...(warnings.length
+    ? warnings.map((w) => `> ${w}`)
+    : [
+        `> Baseline \`fetch\` throughput varied ${noisePct} % across rounds. Rows within twice that of the baseline are marked ≈ and should be read as equal.`,
+      ]),
   '',
   '## Environment',
   '',
