@@ -7,11 +7,22 @@ import ky from 'ky'
 import { ofetch } from 'ofetch'
 import axios from 'axios'
 
-export function clients({ origin, path, config, transport }) {
+export type Config = 'defaults' | 'matched'
+export type Transport = 'stub' | 'server'
+export type ClientFn = () => Promise<unknown>
+
+export function clients(options: {
+  origin: string
+  path: string
+  config: Config
+  transport: Transport
+}): Record<string, ClientFn> {
+  const { origin, path, config, transport } = options
   const matched = config === 'matched'
   const headers = { 'X-Client': 'bench' }
-  const map = {
-    'fetch + response.json()': async () => (await fetch(`${origin}${path}`)).json(),
+  const map: Record<string, ClientFn> = {
+    'fetch + response.json()': async () =>
+      (await fetch(`${origin}${path}`)).json() as unknown,
     '@imlargo/air': (() => {
       const c = air.create({ baseURL: origin, headers })
       return () => c.get(path)
@@ -20,7 +31,7 @@ export function clients({ origin, path, config, transport }) {
       const c = ky.create({
         prefix: origin,
         headers,
-        ...(matched ? { retry: 0, timeout: false } : {}),
+        ...(matched ? { retry: 0, timeout: false as const } : {}),
       })
       return () => c.get(path.replace(/^\//, '')).json()
     })(),
@@ -46,5 +57,5 @@ export function clients({ origin, path, config, transport }) {
   return map
 }
 
-export const CLIENT_NAMES = (transport) =>
+export const clientNames = (transport: Transport): string[] =>
   Object.keys(clients({ origin: 'https://x', path: '/', config: 'defaults', transport }))

@@ -3,12 +3,17 @@
 // `retry` from `@imlargo/air/retry` wraps `fetch`. It repeats only idempotent methods, never a
 // stream body, honours `Retry-After`, and stops the moment the caller's signal fires.
 //
-// Run: node examples/retry.mjs
+// Run: node examples/retry.ts
 
 import { strict as assert } from 'node:assert'
-import air, { isAirError } from '../dist/index.mjs'
-import { retry } from '../dist/retry.mjs'
-import { json, serve } from './_server.mjs'
+import air, { isAirError } from '@imlargo/air'
+import { retry } from '@imlargo/air/retry'
+import { json, serve } from './_server.ts'
+
+interface Flaky {
+  ok: boolean
+  attempts: number
+}
 
 let attempts = 0
 const server = await serve((req, res) => {
@@ -16,10 +21,14 @@ const server = await serve((req, res) => {
   if (req.url === '/cancelled') return
   if (attempts === 1) {
     res.writeHead(429, { 'retry-after': '0', 'content-type': 'application/json' })
-    return res.end('{"error":"slow down"}')
+    res.end('{"error":"slow down"}')
+    return
   }
-  if (attempts === 2) return json(res, { error: 'boom' }, 503)
-  json(res, { ok: true, attempts })
+  if (attempts === 2) {
+    json(res, { error: 'boom' }, 503)
+    return
+  }
+  json(res, { ok: true, attempts } satisfies Flaky)
 })
 
 // --- the recipe -------------------------------------------------------------------------
@@ -29,7 +38,7 @@ const api = air.create({
   fetch: retry({ attempts: 3, delay: (attempt) => 50 * attempt }),
 })
 
-const result = await api.get('/flaky')
+const result = await api.get<Flaky>('/flaky')
 
 // --- what it proves ---------------------------------------------------------------------
 
@@ -47,7 +56,9 @@ assert.equal(attempts, 1, 'a POST was sent once')
 // A cancellation stops everything, including the wait between attempts.
 attempts = 0
 const controller = new AbortController()
-setTimeout(() => controller.abort(), 30)
+setTimeout(() => {
+  controller.abort()
+}, 30)
 await assert.rejects(api.get('/cancelled', { signal: controller.signal }), (e) =>
   isAirError(e),
 )

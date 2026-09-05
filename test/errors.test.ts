@@ -50,7 +50,8 @@ describe('errors', () => {
   it('trims its own internal frame from the stack trace', async () => {
     mockFetch(() => json({}, { status: 500 }))
     const error = await rejection(air.get('https://api.test/a'))
-    if (Error.captureStackTrace) {
+    // V8 only; read structurally so the test does not depend on @types/node either way.
+    if ((Error as { captureStackTrace?: unknown }).captureStackTrace) {
       expect(error.stack).not.toMatch(/\bat request\b/)
     }
   })

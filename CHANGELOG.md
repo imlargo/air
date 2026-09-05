@@ -10,6 +10,16 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Changed
+
+- **`engines.node` is now `>=22`**, up from `>=20`. Node 20 reached end of life in April 2026,
+  and the CI matrix now runs 22 and 24. Not a breaking change under this project's policy: the
+  library itself is unchanged and runs wherever it did.
+- **Examples and scripts are TypeScript**, run directly by Node's type stripping (22.18+). The
+  examples import `@imlargo/air` by name and are type-checked against the built package, so a
+  recipe in the README cannot drift from the types it shows. `node examples/retry.ts` replaces
+  `node examples/retry.mjs`.
+
 ## [2.1.0] - 2026-09-04
 
 Five utilities, each under its own import path. The client is unchanged and its root export

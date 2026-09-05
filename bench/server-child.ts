@@ -1,21 +1,22 @@
 // One client, one process, against the server process. Prints JSON.
 
-import { arg } from './lib.mjs'
-import { clients } from './clients.mjs'
-import { PATHS } from './payloads.mjs'
+import { arg, requireArg } from './lib.ts'
+import { clients, type Config } from './clients.ts'
+import { PATHS, type Payload } from './payloads.ts'
 
-const name = arg('client')
-const config = arg('config', 'defaults')
-const origin = arg('origin')
-const size = arg('payload', 'small')
-const requests = Number(arg('requests', 2_000))
-const concurrency = Number(arg('concurrency', 50))
+const name = requireArg('client')
+const config = arg('config', 'defaults') as Config
+const origin = requireArg('origin')
+const size = arg('payload', 'small') as Payload
+const requests = Number(arg('requests', '2000'))
+const concurrency = Number(arg('concurrency', '50'))
 
 const fn = clients({ origin, path: PATHS[size], config, transport: 'server' })[name]
+if (!fn) throw new Error(`unknown client ${name}`)
 
 for (let i = 0; i < 300; i++) await fn()
 
-const latencies = []
+const latencies: number[] = []
 for (let i = 0; i < requests; i++) {
   const start = performance.now()
   await fn()

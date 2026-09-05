@@ -13,7 +13,7 @@
 - No hidden behavior: no default timeout, no silent retry, no request you did not ask for.
 - Bring your own `fetch`. Anything an interceptor would do is a function around it, and retry,
   token refresh and progress ship as such functions under their own imports.
-- Node 20+, Bun and Deno verified in CI on every commit; browsers and edge runtimes on the same
+- Node 22+, Bun and Deno verified in CI on every commit; browsers and edge runtimes on the same
   baseline APIs.
 
 ## Install
@@ -160,7 +160,7 @@ Use the platform's:
 await api.get('/users', { signal: AbortSignal.timeout(5000) })
 ```
 
-Combine with your own cancellation via `AbortSignal.any` (Node 20.3+):
+Combine with your own cancellation via `AbortSignal.any`:
 
 ```ts
 await api.get('/users', {
@@ -415,7 +415,7 @@ const api = air.create({
 per network chunk, which on a fast connection is hundreds of times a second; if it drives a UI,
 coalesce it yourself, with `requestAnimationFrame` or a timestamp check, rather than rendering on
 each call. Upload progress needs no wrapper: hand `body` a `ReadableStream` that counts as it is
-read, as in [`examples/progress.mjs`](./examples/progress.mjs).
+read, as in [`examples/progress.ts`](./examples/progress.ts).
 
 ## Errors
 
@@ -534,7 +534,7 @@ answer is a recipe here and a reason there. Open an issue either way.
 
 ## Runtimes
 
-Node 20 and later, Bun and Deno, verified in CI on every commit against the built package. The
+Node 22 and later, Bun and Deno, verified in CI on every commit against the built package. The
 latest Chrome, Firefox and Safari, and edge runtimes such as Cloudflare Workers and Vercel Edge:
 air uses only `fetch`, `Headers`, `URLSearchParams`, `AbortSignal` and `ReadableStream`, all
 baseline web platform. ESM only.
@@ -542,32 +542,33 @@ baseline web platform. ESM only.
 ## Examples
 
 Each recipe above is a runnable file in [`examples/`](./examples). They start a local server,
-run the built package over real `fetch`, and assert what they show. CI runs them on every
-supported Node version.
+run the built package over real `fetch`, and assert what they show. They are TypeScript, run
+directly by Node, and type-checked against the built package, so a recipe cannot drift from the
+types it documents. CI runs them on every supported Node version.
 
-| File                                        | Shows                                                    |
-| ------------------------------------------- | -------------------------------------------------------- |
-| [`ssr.mjs`](./examples/ssr.mjs)             | A per-request `fetch` carrying its own cookies           |
-| [`refresh.mjs`](./examples/refresh.mjs)     | `refresh`: one renewal for five concurrent 401s          |
-| [`retry.mjs`](./examples/retry.mjs)         | `retry`: `Retry-After`, no POST, no retry after an abort |
-| [`progress.mjs`](./examples/progress.mjs)   | `progress` for downloads, a counting stream for uploads  |
-| [`serialize.mjs`](./examples/serialize.mjs) | `toQueryParams` and `toFormData` against a server        |
-| [`sse.mjs`](./examples/sse.mjs)             | Server-sent events, and when `EventSource` is enough     |
-| [`testing.mjs`](./examples/testing.mjs)     | Faking the transport without a global stub               |
-| [`platform.mjs`](./examples/platform.mjs)   | Behaviors only a real socket can confirm                 |
+| File                                      | Shows                                                    |
+| ----------------------------------------- | -------------------------------------------------------- |
+| [`ssr.ts`](./examples/ssr.ts)             | A per-request `fetch` carrying its own cookies           |
+| [`refresh.ts`](./examples/refresh.ts)     | `refresh`: one renewal for five concurrent 401s          |
+| [`retry.ts`](./examples/retry.ts)         | `retry`: `Retry-After`, no POST, no retry after an abort |
+| [`progress.ts`](./examples/progress.ts)   | `progress` for downloads, a counting stream for uploads  |
+| [`serialize.ts`](./examples/serialize.ts) | `toQueryParams` and `toFormData` against a server        |
+| [`sse.ts`](./examples/sse.ts)             | Server-sent events, and when `EventSource` is enough     |
+| [`testing.ts`](./examples/testing.ts)     | Faking the transport without a global stub               |
+| [`platform.ts`](./examples/platform.ts)   | Behaviors only a real socket can confirm                 |
 
 ```bash
 pnpm examples
-node examples/retry.mjs
+node examples/retry.ts
 ```
 
 ## Development
 
 ```bash
-pnpm check      # format check, lint, typecheck, tests, build
+pnpm check      # what CI runs: build, then format check, lint, typecheck and tests
 pnpm test:watch
 pnpm examples   # build, then run examples/ against a local server
-pnpm demo       # build, then run examples/demo.mjs against real endpoints
+pnpm demo       # build, then run examples/demo.ts against real endpoints
 pnpm bench      # build, then compare against the latest ky, ofetch and axios
 ```
 
