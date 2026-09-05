@@ -2,7 +2,7 @@
 // process per library, payload and round; random order every round.
 
 import { CLIENT_NAMES } from './clients.mjs'
-import { cv, inChild, median, quantile, shuffled, table } from './lib.mjs'
+import { cv, inChild, median, shuffled, table } from './lib.mjs'
 
 export async function server({ rounds = 5, requests = 2_000, concurrency = 50 } = {}) {
   const { port, child } = await inChild('./server-process.mjs', [], { keepAlive: true })
@@ -52,7 +52,7 @@ export async function server({ rounds = 5, requests = 2_000, concurrency = 50 } 
         `\`${name}\``,
         ms(median(runs[name].map((r) => r.p50))),
         ms(median(runs[name].map((r) => r.p99))),
-        `${k(med)} (${k(quantile(rps, 0.25))} – ${k(quantile(rps, 0.75))})`,
+        `${k(med)} (${k(Math.min(...rps))} – ${k(Math.max(...rps))})`,
         withinNoise ? '≈ fetch' : `${delta > 0 ? '+' : ''}${Math.round(delta * 100)} %`,
       ]
     })
@@ -64,7 +64,7 @@ export async function server({ rounds = 5, requests = 2_000, concurrency = 50 } 
             'Client',
             'p50',
             'p99',
-            `req/s at ${concurrency} concurrent: median (p25 – p75)`,
+            `req/s at ${concurrency} concurrent: median (min – max)`,
             'vs fetch',
           ],
           rows,
