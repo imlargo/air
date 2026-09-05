@@ -1,0 +1,41 @@
+name: Feature request
+description: Something air cannot do, or could do better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        air adds to the client only what userland cannot reach. The four questions below are the test every proposal goes through; see the Scope section of the README and CONTRIBUTING.md. Answering them here saves a round trip, and "I don't know" is a fine answer.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The concrete situation, with code if you have it.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: Can you do it today with `fetch`, `signal`, `raw`, a wrapper or a loop?
+      description: If yes, what makes that unsatisfying? If no, what is the dead end?
+    validations:
+      required: true
+  - type: textarea
+    id: information
+    attributes:
+      label: Does it need information only the caller has?
+      description: For example, whether a failure was a deliberate cancellation, or which credential a request belongs to.
+  - type: dropdown
+    id: shape
+    attributes:
+      label: Where would it live?
+      options:
+        - An option on the client
+        - A utility under its own import path
+        - A recipe in the README
+        - Not sure
+  - type: textarea
+    id: prior
+    attributes:
+      label: How do ky, ofetch or axios handle it?
+      description: Optional. A link is enough.
