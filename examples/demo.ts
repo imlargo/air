@@ -2,10 +2,12 @@
 //
 // Run: pnpm demo
 
-import air, { isAirError } from '../dist/index.mjs'
-import { retry } from '../dist/retry.mjs'
+import air, { isAirError } from '@imlargo/air'
+import { retry } from '@imlargo/air/retry'
 
-async function section(title, fn) {
+type Json = Record<string, unknown>
+
+async function section(title: string, fn: () => Promise<void>) {
   console.log(`\n--- ${title} ---`)
   try {
     await fn()
@@ -15,23 +17,26 @@ async function section(title, fn) {
 }
 
 await section('GET, auto-parsed as JSON', async () => {
-  const todo = await air.get('https://jsonplaceholder.typicode.com/todos/1')
+  const todo = await air.get<Json>('https://jsonplaceholder.typicode.com/todos/1')
   console.log(todo)
 })
 
 await section('a URL instance works as the request target too', async () => {
   const target = new URL('/todos/2', 'https://jsonplaceholder.typicode.com')
-  const todo = await air.get(target)
+  const todo = await air.get<Json>(target)
   console.log(todo)
 })
 
 await section('query serialization', async () => {
-  const posts = await air.get('https://jsonplaceholder.typicode.com/posts', {
-    query: { userId: 1, _limit: 2 },
-  })
+  const posts = await air.get<{ title: string }[]>(
+    'https://jsonplaceholder.typicode.com/posts',
+    {
+      query: { userId: 1, _limit: 2 },
+    },
+  )
   console.log(
-    `${posts.length} post(s):`,
-    posts.map((p) => p.title),
+    `${posts?.length ?? 0} post(s):`,
+    posts?.map((p) => p.title),
   )
 })
 
@@ -40,8 +45,8 @@ await section('a client with baseURL + default headers', async () => {
     baseURL: 'https://jsonplaceholder.typicode.com',
     headers: { 'X-Demo': 'air' },
   })
-  const user = await api.get('/users/1')
-  console.log(user.name, '<' + user.email + '>')
+  const user = await api.get<{ name: string; email: string }>('/users/1')
+  console.log(user?.name, `<${user?.email ?? ''}>`)
 })
 
 await section('a header function survives a token rotation', async () => {
@@ -51,20 +56,29 @@ await section('a header function survives a token rotation', async () => {
     headers: () => ({ Authorization: `Bearer ${token}` }),
   })
 
-  const before = await api.get('/headers')
+  interface Seen {
+    headers: Record<string, string>
+  }
+  const before = await api.get<Seen>('/headers')
   token = 'rotated-token' // e.g. a refresh happened somewhere else in the app
-  const after = await api.get('/headers')
+  const after = await api.get<Seen>('/headers')
 
-  console.log('before rotation:', before.headers.Authorization)
-  console.log('after rotation:', after.headers.Authorization)
+  console.log('before rotation:', before?.headers.Authorization)
+  console.log('after rotation:', after?.headers.Authorization)
 })
 
+interface Echo {
+  json?: unknown
+  form?: unknown
+  headers: Record<string, string>
+}
+
 await section('POST with a JSON body (auto content-type)', async () => {
-  const echoed = await air.post('https://httpbin.org/post', {
+  const echoed = await air.post<Echo>('https://httpbin.org/post', {
     body: { name: 'Ada', role: 'engineer' },
   })
-  console.log('server saw json:', echoed.json)
-  console.log('server saw content-type:', echoed.headers['Content-Type'])
+  console.log('server saw json:', echoed?.json)
+  console.log('server saw content-type:', echoed?.headers['Content-Type'])
 })
 
 await section('POST with FormData (runtime sets the multipart boundary)', async () => {
@@ -72,9 +86,9 @@ await section('POST with FormData (runtime sets the multipart boundary)', async 
   form.set('name', 'Ada')
   form.set('role', 'engineer')
 
-  const echoed = await air.post('https://httpbin.org/post', { body: form })
-  console.log('server saw form:', echoed.form)
-  console.log('server saw content-type:', echoed.headers['Content-Type'])
+  const echoed = await air.post<Echo>('https://httpbin.org/post', { body: form })
+  console.log('server saw form:', echoed?.form)
+  console.log('server saw content-type:', echoed?.headers['Content-Type'])
 })
 
 await section('non-2xx throws an AirError', async () => {

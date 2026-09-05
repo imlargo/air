@@ -163,7 +163,7 @@ exactly once, with or without per-request options. Do not add a path that skips 
 ### Utilities
 
 - **One import path per utility**, built as its own tsdown entry. A utility imports only types
-  from `src/`, never runtime code, so each built file is self-contained. `scripts/smoke.mjs`
+  from `src/`, never runtime code, so each built file is self-contained. `scripts/smoke.ts`
   asserts that, and that the root entry stays under its size budget.
 - **A wrapper is `(options) => Fetch`**, takes the same `fetch` option the client does, and
   resolves the global `fetch` per call when none is given. Wrappers compose by nesting; there
@@ -235,7 +235,7 @@ Settled. Reopen only with new information.
 | No nested query serialization                          | Implicit `[object Object]` or JSON encoding is the magic the primitive-only type prevents. Build the params yourself and pass them.                                                                                                                                                         |
 | No `dispatcher` / `agent` typed fields                 | Node-only. Still forwarded when passed.                                                                                                                                                                                                                                                     |
 | No `schema` option                                     | Fails the first filter question: `User.parse(await api.get(...))` is one line with the same inference. Standard Schema removed the adapter problem, not the redundancy. Documented as a recipe; revisit if users ask for it in numbers.                                                     |
-| No progress callbacks                                  | A `fetch` wrapper with a `TransformStream` does it; see `examples/progress.mjs`.                                                                                                                                                                                                            |
+| No progress callbacks                                  | A `fetch` wrapper with a `TransformStream` does it; see `examples/progress.ts`.                                                                                                                                                                                                             |
 | Errors expose `request` and `response` as plain fields | Redaction before logging is the app's job.                                                                                                                                                                                                                                                  |
 | Published as `@imlargo/air`                            | `air` was taken on npm, and a user scope needs no organization. 1.x shipped as `@korastd/air`, deprecated in favour of this name at 2.0.0.                                                                                                                                                  |
 
@@ -266,18 +266,26 @@ Settled. Reopen only with new information.
 - Type-level rules get `@ts-expect-error` tests. `pnpm typecheck` covers `test/`.
 - Verify a type-level claim by compiling it against the built `dist/` from a consumer project,
   not by reasoning about it.
-- `scripts/smoke.mjs` imports the built `dist/` on plain Node with no syntax newer than Node 20,
-  and CI runs it on the oldest supported version, on Bun and on Deno. It also guards the
-  package shape: the root entry under 3.5 kB gzip and every entry free of runtime imports.
+- `scripts/smoke.ts` imports the built `dist/` on plain Node, with no test runner, and CI runs
+  it on the oldest supported version, on Bun and on Deno. It also guards the package shape: the
+  root entry under 3.5 kB gzip and every entry free of runtime imports.
+- Everything outside `src/` and `test/` is TypeScript that Node runs directly, except
+  `eslint.config.js`, which stays JavaScript because ESLint needs `jiti` to load a `.ts` config, so it is limited
+  to erasable syntax (`erasableSyntaxOnly`). `tsconfig.json` covers `src/` and `test/` with
+  `types: []`, so no Node global reaches the browser-targeted client; `tsconfig.node.json` covers
+  `examples/` and `scripts/` with `@types/node`; `bench/tsconfig.json`
+  extends it. Examples import `@imlargo/air` by its own name, which Node resolves through the
+  package's `exports`, so they are type-checked as consumers of the built `dist/`. Build before
+  `typecheck` and `lint` for that reason.
 - `examples/` is the integration lane. Each file starts a local server, runs the built `dist/`
   over real `fetch`, and asserts. Recipe above a `--- the recipe ---` marker, assertions below
-  `--- what it proves ---`. `_server.mjs` is the shared harness; `demo.mjs` hits third parties
+  `--- what it proves ---`. `_server.ts` is the shared harness; `demo.ts` hits third parties
   and is excluded from the runner.
 
 ## Commands
 
 ```bash
-pnpm check         # format:check, lint, typecheck, test, build
+pnpm check         # what CI runs, in CI's order: build, bench install, then the checks
 pnpm build         # tsdown → dist/ (ESM + .d.ts)
 pnpm test          # vitest run
 pnpm test:watch    # vitest
@@ -285,9 +293,9 @@ pnpm typecheck     # tsc --noEmit
 pnpm lint          # eslint . --max-warnings 0
 pnpm format        # prettier --write .
 pnpm format:check  # prettier --check .
-pnpm smoke         # build, then run scripts/smoke.mjs
-pnpm examples      # build, then run every examples/*.mjs
-pnpm demo          # build, then run examples/demo.mjs against real endpoints
+pnpm smoke         # build, then run scripts/smoke.ts
+pnpm examples      # build, then run every examples/*.ts
+pnpm demo          # build, then run examples/demo.ts against real endpoints
 pnpm bench         # build, install the competitors under bench/, print the comparison
 ```
 
@@ -306,8 +314,9 @@ installing from a git URL without devDependencies does not fail. CI sets `HUSKY:
 `ci.yml` runs on pushes to `main` and on pull requests:
 
 - `check`: format, lint, typecheck, tests, build, on Node 24.
-- `compat`: builds on Node 24 (tsdown needs 22.18+), then runs `scripts/smoke.mjs` and
-  `scripts/examples.mjs` on Node 20, 22 and 24, so `engines` is verified rather than claimed.
+- `compat`: builds on Node 24, then runs `scripts/smoke.ts` and `scripts/examples.ts` on Node
+  22 and 24, so `engines` is verified rather than claimed. Node 22 prints an experimental-type-
+  stripping warning; it is noise, not a failure.
 
 `release.yml` runs on a `v*` tag. It refuses to publish if the tag disagrees with `package.json`
 or `CHANGELOG.md` has no section for it, runs lint, typecheck and tests, publishes with npm

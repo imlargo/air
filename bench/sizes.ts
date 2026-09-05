@@ -2,11 +2,11 @@
 
 import { gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
-import { LIBS, table } from './lib.mjs'
+import { LIBS, table } from './lib.ts'
 
-const HAS_DEFAULT = new Set(['@imlargo/air', 'ky', 'axios'])
+const HAS_DEFAULT = new Set<string>(['@imlargo/air', 'ky', 'axios'])
 
-async function bundle(name, platform) {
+async function bundle(name: string, platform: 'browser' | 'node') {
   const contents = `export * from '${name}'\n${HAS_DEFAULT.has(name) ? `export { default } from '${name}'\n` : ''}`
   const result = await build({
     stdin: { contents, resolveDir: new URL('.', import.meta.url).pathname },
@@ -18,14 +18,14 @@ async function bundle(name, platform) {
     write: false,
     logLevel: 'silent',
   })
-  const code = result.outputFiles[0].contents
+  const code = result.outputFiles[0]?.contents ?? new Uint8Array()
   return { raw: code.byteLength, gzip: gzipSync(code, { level: 9 }).byteLength }
 }
 
-const kb = (bytes) => `${(bytes / 1024).toFixed(1)} kB`
+const kb = (bytes: number) => `${(bytes / 1024).toFixed(1)} kB`
 
-export async function sizes() {
-  const rows = []
+export async function sizes(): Promise<string> {
+  const rows: string[][] = []
   for (const name of LIBS) {
     const browser = await bundle(name, 'browser')
     const node = await bundle(name, 'node')

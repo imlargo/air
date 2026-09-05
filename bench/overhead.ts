@@ -1,36 +1,38 @@
 // Per-call overhead over a stubbed fetch, one fresh process per client and round, clients in
 // a different random order every round.
 
-import { CLIENT_NAMES } from './clients.mjs'
-import { inChild, median, quantile, shuffled, table } from './lib.mjs'
+import { clientNames, type Config } from './clients.ts'
+import { inChild, median, quantile, shuffled, table } from './lib.ts'
+
+type Pooled = Record<string, number[]>
 
 export async function overhead({ rounds = 5 } = {}) {
-  const names = CLIENT_NAMES('stub')
-  const results = {}
-  for (const config of ['defaults', 'matched']) {
-    const pooled = Object.fromEntries(names.map((n) => [n, []]))
+  const names = clientNames('stub')
+  const results = {} as Record<Config, Pooled>
+  for (const config of ['defaults', 'matched'] as const) {
+    const pooled: Pooled = Object.fromEntries(names.map((n) => [n, []]))
     for (let round = 0; round < rounds; round++) {
       for (const name of shuffled(names)) {
-        const { samples } = await inChild('./overhead-child.mjs', [
+        const { samples } = await inChild<{ samples: number[] }>('./overhead-child.ts', [
           `--client=${name}`,
           `--config=${config}`,
         ])
-        pooled[name].push(...samples)
+        pooled[name]?.push(...samples)
       }
     }
     results[config] = pooled
   }
 
-  const us = (v) => `${v.toFixed(2)} µs`
+  const us = (v: number) => `${v.toFixed(2)} µs`
+  const baseline = median(results.defaults[names[0] ?? ''] ?? [0])
   const rows = names.map((name) => {
-    const d = results.defaults[name]
-    const m = results.matched[name]
-    const base = median(results.defaults[names[0]])
+    const d = results.defaults[name] ?? []
+    const m = results.matched[name] ?? []
     return [
       `\`${name}\``,
       `${us(median(d))} (${us(quantile(d, 0.25))} – ${us(quantile(d, 0.75))})`,
-      `+${us(median(d) - base)}`,
-      `${us(median(m))}`,
+      `+${us(median(d) - baseline)}`,
+      us(median(m)),
     ]
   })
   return {

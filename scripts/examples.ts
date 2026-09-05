@@ -1,5 +1,5 @@
-// Runs every example in its own process against the built `dist/`. Skips `_*.mjs` (shared
-// helpers) and `demo.mjs` (third-party network).
+// Runs every example in its own process against the built `dist/`. Skips `_*.ts` (shared
+// helpers) and `demo.ts` (third-party network).
 //
 // Run: pnpm examples
 
@@ -11,8 +11,8 @@ import path from 'node:path'
 const dir = fileURLToPath(new URL('../examples/', import.meta.url))
 
 const files = readdirSync(dir)
-  .filter((name) => name.endsWith('.mjs'))
-  .filter((name) => !name.startsWith('_') && name !== 'demo.mjs')
+  .filter((name) => name.endsWith('.ts'))
+  .filter((name) => !name.startsWith('_') && name !== 'demo.ts')
   .sort()
 
 if (files.length === 0) {
@@ -26,7 +26,7 @@ for (const file of files) {
     stdio: 'inherit',
   })
   if (status !== 0) {
-    console.error(`examples: ${file} exited with ${status}`)
+    console.error(`examples: ${file} exited with ${String(status)}`)
     failed++
   }
 }

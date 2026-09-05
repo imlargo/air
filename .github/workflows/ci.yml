@@ -22,6 +22,10 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Built first: examples and the bench are type-checked and linted against the built
+      # `dist/`, as consumers. The bench installs its competitors into its own package.
+      - run: pnpm build
+      - run: pnpm --dir bench install
       # The pre-commit hook already formats, but a hook is local and skippable
       # (`--no-verify`, a fresh clone that never ran `pnpm install`, a GUI client).
       # This is the copy that actually holds the line.
@@ -29,7 +33,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
 
   compat:
     name: Built output on Node ${{ matrix.node }}
@@ -37,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22', '24']
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -52,13 +55,13 @@ jobs:
       - run: pnpm build
 
       # Runs the built dist/ on the oldest version `engines` claims, so the claim
-      # is verified rather than asserted. No test runner: vitest itself needs >=20.
+      # is verified rather than asserted. Plain Node running TypeScript, no test runner.
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
-      - run: node scripts/smoke.mjs
+      - run: node scripts/smoke.ts
 
-      - run: node scripts/examples.mjs
+      - run: node scripts/examples.ts
 
   runtimes:
     name: Built output on ${{ matrix.runtime }}
@@ -82,10 +85,10 @@ jobs:
       - if: matrix.runtime == 'bun'
         uses: oven-sh/setup-bun@v2
       - if: matrix.runtime == 'bun'
-        run: bun scripts/smoke.mjs
+        run: bun scripts/smoke.ts
       - if: matrix.runtime == 'deno'
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
       - if: matrix.runtime == 'deno'
-        run: deno run --allow-net --allow-read scripts/smoke.mjs
+        run: deno run --allow-net --allow-read scripts/smoke.ts

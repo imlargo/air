@@ -14,7 +14,8 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "declaration": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": []
   },
-  "include": ["src", "test", "*.config.ts"]
+  "include": ["src", "test", "tsdown.config.ts", "vitest.config.ts"]
 }

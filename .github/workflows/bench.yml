@@ -28,7 +28,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm --dir bench install
-      - run: node bench/run.mjs >> "$GITHUB_STEP_SUMMARY"
+      - run: node bench/run.ts >> "$GITHUB_STEP_SUMMARY"
         env:
           BENCH_ROUNDS: ${{ inputs.rounds }}
       - uses: actions/upload-artifact@v4

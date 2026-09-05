@@ -5,16 +5,17 @@
 // Parse frames with a library such as `parse-sse`; a hand-written `\n\n` split misses CRLF
 // frames, which the spec allows.
 //
-// Run: node examples/sse.mjs
+// Run: node examples/sse.ts
 
 import { strict as assert } from 'node:assert'
-import air from '../dist/index.mjs'
-import { serve } from './_server.mjs'
+import air from '@imlargo/air'
+import { serve } from './_server.ts'
 
 const server = await serve((req, res) => {
   if (req.headers.authorization !== 'Bearer secret') {
     res.writeHead(401, { 'content-type': 'application/json' })
-    return res.end('{"error":"EventSource could not have got this far"}')
+    res.end('{"error":"EventSource could not have got this far"}')
+    return
   }
   res.writeHead(200, { 'content-type': 'text/event-stream' })
   // CRLF on purpose: the spec allows it and a '\n\n' split finds no frames.
@@ -32,10 +33,12 @@ const api = air.create({
 })
 
 // `raw`, because the response headers describe the stream. `data` is `response.body` itself.
-const { data, response } = await api.raw.get('/events')
+// The content type alone would already select the stream; `parse: 'stream'` also types it.
+const { data, response } = await api.raw.get('/events', { parse: 'stream' })
 
 assert.equal(response.headers.get('content-type'), 'text/event-stream')
 assert.equal(data, response.body, 'one stream under two names')
+assert.ok(data)
 
 // Parse frames with a library, e.g. `parse-sse`, which takes the Response from `raw`:
 //
@@ -43,7 +46,7 @@ assert.equal(data, response.body, 'one stream under two names')
 //   for await (const event of parseServerSentEvents(response)) { ... }
 //
 // What follows only proves the bytes arrive unbuffered and intact; it is not a parser.
-const chunks = []
+const chunks: string[] = []
 const reader = data.pipeThrough(new TextDecoderStream()).getReader()
 for (;;) {
   const { done, value } = await reader.read()

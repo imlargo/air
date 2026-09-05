@@ -15,14 +15,13 @@ import type {
   SignalSource,
 } from './types.js'
 
-// V8-only; declared here rather than depending on @types/node.
-declare global {
-  interface ErrorConstructor {
-    captureStackTrace?(
-      targetObject: object,
-      constructorOpt?: (...args: never[]) => unknown,
-    ): void
-  }
+// V8-only. Read through a structural type rather than a global augmentation, so the code
+// neither depends on @types/node nor conflicts with it when a test runner brings it in.
+interface V8ErrorConstructor {
+  captureStackTrace?: (
+    target: object,
+    constructor?: (...args: never[]) => unknown,
+  ) => void
 }
 
 const resolveHeaders = async (source?: HeaderSource): Promise<HeaderInit | undefined> =>
@@ -87,7 +86,7 @@ const messageOf = (error: unknown): string =>
 
 function fail(message: string, info: AirRequest, init?: AirErrorInit): never {
   const error = new AirError(message, info, init)
-  Error.captureStackTrace?.(error, request)
+  ;(Error as V8ErrorConstructor).captureStackTrace?.(error, request)
   throw error
 }
 

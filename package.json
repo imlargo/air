@@ -58,27 +58,28 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p bench/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "smoke": "pnpm build && node scripts/smoke.mjs",
-    "examples": "pnpm build && node scripts/examples.mjs",
-    "demo": "pnpm build && node examples/demo.mjs",
-    "bench": "pnpm build && pnpm --dir bench install && node bench/run.mjs",
+    "check": "pnpm build && pnpm --dir bench install && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "smoke": "pnpm build && node scripts/smoke.ts",
+    "examples": "pnpm build && node scripts/examples.ts",
+    "demo": "pnpm build && node examples/demo.ts",
+    "bench": "pnpm build && pnpm --dir bench install && node bench/run.ts",
     "prepublishOnly": "pnpm build",
     "prepare": "husky || true"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.1",
     "eslint": "^10.8.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",

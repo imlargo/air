@@ -4,12 +4,17 @@
 // function once, however many requests failed at the same time, and re-sends each of them with
 // the result. A credential that is still rejected surfaces as a normal error.
 //
-// Run: node examples/refresh.mjs
+// Run: node examples/refresh.ts
 
 import { strict as assert } from 'node:assert'
-import air, { isAirError } from '../dist/index.mjs'
-import { refresh } from '../dist/refresh.mjs'
-import { json, serve } from './_server.mjs'
+import air, { isAirError } from '@imlargo/air'
+import { refresh } from '@imlargo/air/refresh'
+import { json, serve } from './_server.ts'
+
+interface Ok {
+  ok: boolean
+  url: string
+}
 
 let valid = 'token-1'
 let renewals = 0
@@ -19,12 +24,14 @@ const server = await serve((req, res) => {
   if (req.url === '/renew') {
     renewals++
     valid = renewalWorks ? `token-${renewals + 1}` : valid
-    return json(res, { token: renewalWorks ? valid : 'not-a-real-token' })
+    json(res, { token: renewalWorks ? valid : 'not-a-real-token' })
+    return
   }
   if (req.headers.authorization !== `Bearer ${valid}`) {
-    return json(res, { error: 'expired' }, 401)
+    json(res, { error: 'expired' }, 401)
+    return
   }
-  json(res, { ok: true, url: req.url })
+  json(res, { ok: true, url: req.url ?? '' } satisfies Ok)
 })
 
 // --- the recipe -------------------------------------------------------------------------
@@ -39,7 +46,9 @@ const api = air.create({
     // through the wrapped client would wait for its own refresh. Store the new token for later
     // requests, and return the headers for the retry.
     headers: async (fetch) => {
-      const { token } = await (await fetch(`${server.url}/renew`, {})).json()
+      const { token } = (await (await fetch(`${server.url}/renew`, {})).json()) as {
+        token: string
+      }
       session.token = token
       return { Authorization: `Bearer ${token}` }
     },
@@ -49,20 +58,20 @@ const api = air.create({
 // --- what it proves ---------------------------------------------------------------------
 
 const results = await Promise.all([
-  api.get('/a'),
-  api.get('/b'),
-  api.get('/c'),
-  api.get('/d'),
-  api.get('/e'),
+  api.get<Ok>('/a'),
+  api.get<Ok>('/b'),
+  api.get<Ok>('/c'),
+  api.get<Ok>('/d'),
+  api.get<Ok>('/e'),
 ])
 assert.ok(
-  results.every((r) => r.ok),
+  results.every((r) => r?.ok),
   'all five requests succeeded after the refresh',
 )
 assert.equal(renewals, 1, 'five concurrent 401s produced exactly one renewal')
 
 valid = 'rotated-out-of-band'
-assert.equal((await api.get('/f')).ok, true, 'a later 401 recovered too')
+assert.equal((await api.get<Ok>('/f'))?.ok, true, 'a later 401 recovered too')
 assert.equal(renewals, 2, 'and started a fresh renewal')
 
 renewalWorks = false

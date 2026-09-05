@@ -1,7 +1,8 @@
-// Smoke-tests the built `dist/` on plain Node, with no test runner and no syntax newer than
-// Node 20, so it doubles as the check that `engines` is accurate.
+// Smoke-tests the built `dist/` on plain Node, with no test runner, on the oldest Node that
+// `engines` claims, so the claim is verified rather than asserted. Relative imports rather than
+// the package name, because this also runs on Bun and Deno.
 //
-// Run: pnpm build && node scripts/smoke.mjs
+// Run: pnpm build && node scripts/smoke.ts
 
 import { strict as assert } from 'node:assert'
 import { readFileSync } from 'node:fs'
@@ -10,21 +11,37 @@ import air, { AirError, create, isAirError } from '../dist/index.mjs'
 import { retry } from '../dist/retry.mjs'
 import { refresh } from '../dist/refresh.mjs'
 import { progress } from '../dist/progress.mjs'
+import type { Progress } from '../dist/progress.mjs'
 import { toFormData } from '../dist/form.mjs'
 import { toQueryParams } from '../dist/query.mjs'
 
-const json = (data, init) =>
-  new Response(JSON.stringify(data), {
-    ...init,
-    headers: { 'content-type': 'application/json', ...(init && init.headers) },
-  })
+const json = (data: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers)
+  headers.set('content-type', 'application/json')
+  return new Response(JSON.stringify(data), { ...init, headers })
+}
 
-let seen
-const stub = (handler) => {
-  globalThis.fetch = async (url, init) => {
+interface Seen {
+  url: string
+  init: RequestInit
+  request: Request
+}
+let seen: Seen | undefined
+const last = (): Seen => {
+  assert.ok(seen, 'a request was sent')
+  return seen
+}
+const stub = (handler: (url: string, init: RequestInit) => Response) => {
+  globalThis.fetch = (input, init = {}) => {
+    const url = input instanceof Request ? input.url : input.toString()
     seen = { url, init, request: new Request(url, init) }
-    return handler(url, init)
+    return Promise.resolve(handler(url, init))
   }
+}
+const failure = async (pending: Promise<unknown>): Promise<AirError> => {
+  const error: unknown = await pending.catch((e: unknown) => e)
+  assert.ok(isAirError(error), 'throws an AirError')
+  return error
 }
 
 // Exports are intact
@@ -42,29 +59,33 @@ assert.deepEqual(await air.get('https://x.test/a'), { id: 1 }, 'parses a JSON bo
 stub(() => json({}))
 const api = create({ baseURL: 'https://x.test', headers: { 'X-Smoke': 'yes' } })
 await api.get('/s', { query: { page: 2, skip: null } })
-assert.equal(seen.url, 'https://x.test/s?page=2', 'builds url, drops null query values')
-assert.equal(seen.request.headers.get('x-smoke'), 'yes', 'applies client headers')
+assert.equal(last().url, 'https://x.test/s?page=2', 'builds url, drops null query values')
+assert.equal(last().request.headers.get('x-smoke'), 'yes', 'applies client headers')
 
 // JSON body gets a content-type
 stub(() => json({}))
 await air.post('https://x.test/a', { body: { name: 'Ada' } })
 assert.equal(
-  seen.request.headers.get('content-type'),
+  last().request.headers.get('content-type'),
   'application/json',
   'sets json content-type',
 )
-assert.equal(await seen.request.text(), '{"name":"Ada"}', 'serializes the body')
+assert.equal(await last().request.text(), '{"name":"Ada"}', 'serializes the body')
 
 // Lazy header function
 stub(() => json({}))
 let token = 'first'
 const auth = create({ headers: () => ({ Authorization: `Bearer ${token}` }) })
 await auth.get('https://x.test/a')
-assert.equal(seen.request.headers.get('authorization'), 'Bearer first', 'reads the token')
+assert.equal(
+  last().request.headers.get('authorization'),
+  'Bearer first',
+  'reads the token',
+)
 token = 'second'
 await auth.get('https://x.test/a')
 assert.equal(
-  seen.request.headers.get('authorization'),
+  last().request.headers.get('authorization'),
   'Bearer second',
   'header function re-runs per request',
 )
@@ -95,11 +116,13 @@ assert.deepEqual(
 stub(() => {
   throw new Error('the global fetch should not have been called')
 })
-let injected
+// A holder rather than a `let`: TypeScript does not see assignments made inside the callback.
+const injected: { url?: string; init?: RequestInit } = {}
 const scoped = create({
   fetch: (url, init) => {
-    injected = { url, init }
-    return json({ scoped: true })
+    injected.url = url
+    injected.init = init
+    return Promise.resolve(json({ scoped: true }))
   },
 })
 assert.deepEqual(
@@ -108,46 +131,45 @@ assert.deepEqual(
   'uses the injected fetch',
 )
 assert.equal(injected.url, '/relative/path', 'passes a relative url through untouched')
-assert.equal(injected.init.fetch, undefined, 'does not leak the option into the init')
+assert.ok(injected.init)
+assert.equal('fetch' in injected.init, false, 'does not leak the option into the init')
 
 // A signal function is resolved per request
 stub(() => json({}))
 const timed = create({ signal: () => AbortSignal.timeout(1000) })
 await timed.get('https://x.test/a')
-const first = seen.init.signal
+const first = last().init.signal
 await timed.get('https://x.test/b')
 assert.ok(first instanceof AbortSignal, 'resolves the signal function')
-assert.notEqual(first, seen.init.signal, 'mints a fresh signal per request')
+assert.notEqual(first, last().init.signal, 'mints a fresh signal per request')
 
 // A null header removes an inherited one
 stub(() => json({}))
 const authed = create({ headers: { Authorization: 'Bearer t', 'X-Keep': 'yes' } })
 await authed.get('https://x.test/public', { headers: { Authorization: null } })
-assert.equal(seen.request.headers.get('authorization'), null, 'null drops the header')
-assert.equal(seen.request.headers.get('x-keep'), 'yes', 'and leaves the others alone')
+assert.equal(last().request.headers.get('authorization'), null, 'null drops the header')
+assert.equal(last().request.headers.get('x-keep'), 'yes', 'and leaves the others alone')
 
 // query accepts URLSearchParams and tuples, repeated keys intact
 stub(() => json({}))
 await air.get('https://x.test/s', { query: new URLSearchParams('tag=a&tag=b') })
-assert.equal(seen.url, 'https://x.test/s?tag=a&tag=b', 'accepts a URLSearchParams')
+assert.equal(last().url, 'https://x.test/s?tag=a&tag=b', 'accepts a URLSearchParams')
 stub(() => json({}))
 await air.get('https://x.test/s', {
   query: [['page', 2]],
   baseURL: new URL('https://y.test'),
 })
-assert.equal(seen.url, 'https://x.test/s?page=2', 'accepts tuples; absolute path wins')
+assert.equal(last().url, 'https://x.test/s?page=2', 'accepts tuples; absolute path wins')
 
 // Non-2xx throws a recognizable AirError
 stub(() => json({ message: 'nope' }, { status: 404, statusText: 'Not Found' }))
-const error = await air.get('https://x.test/missing').catch((e) => e)
-assert.ok(isAirError(error), 'throws an AirError')
+const error = await failure(air.get('https://x.test/missing'))
 assert.equal(error.status, 404, 'carries the status')
 assert.deepEqual(error.data, { message: 'nope' }, 'carries the parsed error body')
 
-const runtime = globalThis.navigator?.userAgent ?? `Node.js/${process.version}`
 // The root entry is the client and nothing else: no utility code, and a size that does not
 // creep. Each utility ships self-contained, so importing one loads exactly one file.
-const dist = (name) =>
+const dist = (name: string) =>
   readFileSync(new URL(`../dist/${name}.mjs`, import.meta.url), 'utf8')
 assert.ok(gzipSync(dist('index')).length < 3500, 'root entry stays under 3.5 kB gzip')
 for (const name of ['index', 'retry', 'refresh', 'progress', 'form', 'query']) {
@@ -169,12 +191,12 @@ await air.get('https://x.test/a', {
   fetch: refresh({ headers: () => ({ Authorization: 'Bearer new' }) }),
 })
 assert.equal(
-  seen.request.headers.get('authorization'),
+  last().request.headers.get('authorization'),
   'Bearer new',
   'refresh retried with new headers',
 )
 
-const reports = []
+const reports: Progress[] = []
 stub(
   () =>
     new Response('{"ok":1}', {
@@ -191,7 +213,7 @@ await air.post('https://x.test/u', {
   body: toFormData({ name: 'Ada', tags: ['a', 'b'] }),
 })
 assert.match(
-  seen.request.headers.get('content-type'),
+  last().request.headers.get('content-type') ?? '',
   /^multipart\/form-data; boundary=/,
   'toFormData body is multipart',
 )
@@ -201,9 +223,9 @@ await air.get('https://x.test/s', {
   query: toQueryParams({ filter: { since: new Date(0) } }),
 })
 assert.equal(
-  decodeURIComponent(seen.url),
+  decodeURIComponent(last().url),
   'https://x.test/s?filter[since]=1970-01-01T00:00:00.000Z',
   'toQueryParams feeds query',
 )
 
-console.log(`smoke: all checks passed on ${runtime}`)
+console.log(`smoke: all checks passed on ${navigator.userAgent}`)

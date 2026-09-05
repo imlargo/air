@@ -8,19 +8,19 @@
 // - Two configurations: library defaults (what a user gets) and matched features (ky's retry
 //   and timeout off, ofetch's retry off), so the same work is compared.
 // - Two payload sizes, since parsing dominates differently at 200 B and at 30 kB.
-// - Medians with interquartile ranges, never a single iteration. The baseline's own variation
-//   across rounds is measured and reported; anything within it is marked as noise.
+// - Medians with spreads, never a single iteration. The baseline's own variation across
+//   rounds is measured and reported; anything within it is marked as noise.
 //
 // Run: pnpm bench   (BENCH_ROUNDS=3 for a quicker pass)
 
 import { writeFileSync } from 'node:fs'
-import { LIBS, versionOf } from './lib.mjs'
-import { environment } from './env.mjs'
-import { sizes } from './sizes.mjs'
-import { cold } from './cold.mjs'
-import { overhead } from './overhead.mjs'
-import { server } from './server.mjs'
-import { behavior } from './behavior.mjs'
+import { LIBS, versionOf } from './lib.ts'
+import { environment } from './env.ts'
+import { sizes } from './sizes.ts'
+import { cold } from './cold.ts'
+import { overhead } from './overhead.ts'
+import { server } from './server.ts'
+import { behavior } from './behavior.ts'
 
 const rounds = Number(process.env.BENCH_ROUNDS ?? 5)
 const env = environment()
@@ -41,7 +41,7 @@ const minutes = ((performance.now() - started) / 60_000).toFixed(1)
 // reader to notice: too few rounds to estimate noise, a machine that was already busy, and a
 // baseline that would not hold still.
 const noisePct = Math.round(serverReport.noise * 100)
-const warnings = []
+const warnings: string[] = []
 if (rounds < 3) {
   warnings.push(
     `**${rounds} round${rounds === 1 ? '' : 's'} only.** Noise cannot be estimated from fewer than 3 rounds; the percentages below are single measurements, not results. Use this run to check that the benchmark works, not to quote from.`,
@@ -57,6 +57,7 @@ if (rounds >= 3 && serverReport.noise > 0.15) {
     `**Noisy environment.** The baseline \`fetch\` throughput varied ${noisePct} % across rounds. Only differences well above that are meaningful.`,
   )
 }
+
 const lines = [
   '# air benchmark',
   '',
