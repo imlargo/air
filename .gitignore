@@ -4,3 +4,8 @@ dist
 # Local notes and per-machine tooling state; neither is part of the package.
 context
 .claude
+
+# The benchmark installs the competitors next to itself; see bench/package.json.
+bench/node_modules
+bench/pnpm-lock.yaml
+bench/report.md

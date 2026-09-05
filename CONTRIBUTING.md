@@ -288,7 +288,14 @@ pnpm format:check  # prettier --check .
 pnpm smoke         # build, then run scripts/smoke.mjs
 pnpm examples      # build, then run every examples/*.mjs
 pnpm demo          # build, then run examples/demo.mjs against real endpoints
+pnpm bench         # build, install the competitors under bench/, print the comparison
 ```
+
+`bench/` is its own package, so ky, ofetch, axios and esbuild never enter air's devDependencies.
+It links the local build of air and installs the latest of the other three at run time; the
+report records the exact versions. `bench.yml` runs it on demand from the Actions tab and
+publishes the report as the run summary. Any number quoted in the README must come from that
+report, with the date, and comparisons hold only within one run.
 
 A husky pre-commit hook runs `lint-staged` (prettier, then `eslint --fix`) on staged files. It is
 a convenience; `pnpm format:check` in CI is the enforcement. `prepare` is `husky || true` so
