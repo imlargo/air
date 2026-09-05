@@ -1,101 +1,75 @@
-// Latency and throughput against a local HTTP server with keep-alive. Real sockets, no network.
+// Latency and throughput against a local HTTP server in its own process. One fresh client
+// process per library, payload and round; random order every round.
 
-import http from 'node:http'
-import air from '@imlargo/air'
-import ky from 'ky'
-import { ofetch } from 'ofetch'
-import axios from 'axios'
-import { median, table } from './lib.mjs'
+import { CLIENT_NAMES } from './clients.mjs'
+import { cv, inChild, median, quantile, shuffled, table } from './lib.mjs'
 
-const PAYLOAD = JSON.stringify({
-  id: 1,
-  name: 'Ada',
-  tags: ['a', 'b'],
-  nested: { ok: true },
-})
-
-async function sequential(fn, n) {
-  for (let i = 0; i < 200; i++) await fn()
-  const latencies = []
-  for (let i = 0; i < n; i++) {
-    const start = performance.now()
-    await fn()
-    latencies.push(performance.now() - start)
-  }
-  latencies.sort((a, b) => a - b)
-  return { p50: latencies[Math.floor(n * 0.5)], p99: latencies[Math.floor(n * 0.99)] }
-}
-
-async function concurrent(fn, total, concurrency) {
-  let started = 0
-  const start = performance.now()
-  await Promise.all(
-    Array.from({ length: concurrency }, async () => {
-      while (started < total) {
-        started++
-        await fn()
-      }
-    }),
-  )
-  return total / ((performance.now() - start) / 1000)
-}
-
-export async function server({ requests = 2000, concurrency = 50, rounds = 3 } = {}) {
-  const httpServer = http.createServer((_req, res) => {
-    res.writeHead(200, {
-      'content-type': 'application/json',
-      'content-length': String(Buffer.byteLength(PAYLOAD)),
-    })
-    res.end(PAYLOAD)
-  })
-  await new Promise((resolve) => httpServer.listen(0, '127.0.0.1', resolve))
-  const origin = `http://127.0.0.1:${httpServer.address().port}`
-
-  const clients = {
-    'fetch + response.json()': async () => (await fetch(`${origin}/users/1`)).json(),
-    '@imlargo/air': (() => {
-      const c = air.create({ baseURL: origin })
-      return () => c.get('/users/1')
-    })(),
-    ky: (() => {
-      const c = ky.create({ prefix: origin })
-      return () => c.get('users/1').json()
-    })(),
-    ofetch: (() => {
-      const c = ofetch.create({ baseURL: origin })
-      return () => c('/users/1')
-    })(),
-    'axios (fetch adapter)': (() => {
-      const c = axios.create({ baseURL: origin, adapter: 'fetch' })
-      return () => c.get('/users/1')
-    })(),
-    'axios (http adapter)': (() => {
-      const c = axios.create({ baseURL: origin })
-      return () => c.get('/users/1')
-    })(),
-  }
+export async function server({ rounds = 5, requests = 2_000, concurrency = 50 } = {}) {
+  const { port, child } = await inChild('./server-process.mjs', [], { keepAlive: true })
+  const origin = `http://127.0.0.1:${port}`
+  const names = CLIENT_NAMES('server')
+  const results = {}
 
   try {
-    const rows = []
-    for (const [name, fn] of Object.entries(clients)) {
-      const seq = await sequential(fn, requests)
-      const throughputs = []
-      for (let round = 0; round < rounds; round++) {
-        throughputs.push(await concurrent(fn, requests * 2, concurrency))
+    for (const config of ['defaults', 'matched']) {
+      for (const payload of ['small', 'large']) {
+        const runs = Object.fromEntries(names.map((n) => [n, []]))
+        for (let round = 0; round < rounds; round++) {
+          for (const name of shuffled(names)) {
+            runs[name].push(
+              await inChild('./server-child.mjs', [
+                `--client=${name}`,
+                `--config=${config}`,
+                `--origin=${origin}`,
+                `--payload=${payload}`,
+                `--requests=${requests}`,
+                `--concurrency=${concurrency}`,
+              ]),
+            )
+          }
+        }
+        results[`${config}/${payload}`] = runs
       }
-      const rps = median(throughputs)
-      rows.push([
-        `\`${name}\``,
-        `${seq.p50.toFixed(3)} ms`,
-        `${seq.p99.toFixed(3)} ms`,
-        `${Math.round(rps).toLocaleString('en-US')} req/s`,
-      ])
     }
-    return table(
-      ['Client', 'p50', 'p99', `Throughput at ${concurrency} concurrent`],
-      rows,
-    )
   } finally {
-    httpServer.close()
+    child.kill('SIGTERM')
   }
+
+  const baselineRps = results['defaults/small'][names[0]].map((r) => r.rps)
+  const noise = cv(baselineRps)
+
+  const ms = (v) => `${v.toFixed(3)} ms`
+  const k = (v) => `${Math.round(v).toLocaleString('en-US')}`
+  const sections = []
+  for (const [key, runs] of Object.entries(results)) {
+    const base = median(runs[names[0]].map((r) => r.rps))
+    const rows = names.map((name) => {
+      const rps = runs[name].map((r) => r.rps)
+      const med = median(rps)
+      const delta = (med - base) / base
+      const withinNoise = Math.abs(delta) <= Math.max(0.1, 2 * noise)
+      return [
+        `\`${name}\``,
+        ms(median(runs[name].map((r) => r.p50))),
+        ms(median(runs[name].map((r) => r.p99))),
+        `${k(med)} (${k(quantile(rps, 0.25))} – ${k(quantile(rps, 0.75))})`,
+        withinNoise ? '≈ fetch' : `${delta > 0 ? '+' : ''}${Math.round(delta * 100)} %`,
+      ]
+    })
+    const [config, payload] = key.split('/')
+    sections.push(
+      `**${config === 'defaults' ? 'Library defaults' : 'Matched features'}, ${payload} payload**\n\n` +
+        table(
+          [
+            'Client',
+            'p50',
+            'p99',
+            `req/s at ${concurrency} concurrent: median (p25 – p75)`,
+            'vs fetch',
+          ],
+          rows,
+        ),
+    )
+  }
+  return { markdown: sections.join('\n\n'), noise, raw: results }
 }

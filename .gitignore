@@ -9,3 +9,4 @@ context
 bench/node_modules
 bench/pnpm-lock.yaml
 bench/report.md
+bench/report.json

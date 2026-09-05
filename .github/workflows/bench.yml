@@ -5,6 +5,11 @@ name: Bench
 # runner are noisier than from a workstation; compare within a run, not across runs.
 on:
   workflow_dispatch:
+    inputs:
+      rounds:
+        description: Rounds per measurement (fresh process per client and round)
+        default: '5'
+        required: false
 
 env:
   HUSKY: 0
@@ -23,8 +28,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm --dir bench install
-      - run: node bench/run.mjs | tee bench/report.md >> "$GITHUB_STEP_SUMMARY"
+      - run: node bench/run.mjs >> "$GITHUB_STEP_SUMMARY"
+        env:
+          BENCH_ROUNDS: ${{ inputs.rounds }}
       - uses: actions/upload-artifact@v4
         with:
           name: bench-report
-          path: bench/report.md
+          path: |
+            bench/report.md
+            bench/report.json

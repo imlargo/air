@@ -1,7 +1,7 @@
-// Time to import each library in a fresh process. Matters for serverless and edge cold starts.
+// Time to import each library in a fresh process, libraries interleaved on every run.
 
 import { spawnSync } from 'node:child_process'
-import { LIBS, median, table } from './lib.mjs'
+import { LIBS, median, quantile, shuffled, table } from './lib.mjs'
 
 function importTime(name) {
   const script = `const t = performance.now(); await import('${name}'); console.log(performance.now() - t)`
@@ -12,10 +12,18 @@ function importTime(name) {
   return Number(out.stdout.trim())
 }
 
-export function cold(runs = 7) {
-  const rows = LIBS.map((name) => {
-    const samples = Array.from({ length: runs }, () => importTime(name))
-    return [`\`${name}\``, `${median(samples).toFixed(1)} ms`]
-  })
-  return table(['Library', `Cold import, median of ${runs}`], rows)
+export function cold({ runs = 11 } = {}) {
+  const samples = Object.fromEntries(LIBS.map((n) => [n, []]))
+  for (let run = 0; run < runs; run++) {
+    for (const name of shuffled(LIBS)) samples[name].push(importTime(name))
+  }
+  const ms = (v) => `${v.toFixed(1)} ms`
+  const rows = LIBS.map((name) => [
+    `\`${name}\``,
+    `${ms(median(samples[name]))} (${ms(quantile(samples[name], 0.25))} – ${ms(quantile(samples[name], 0.75))})`,
+  ])
+  return {
+    markdown: table(['Library', `Cold import: median (p25 – p75) of ${runs}`], rows),
+    raw: samples,
+  }
 }
