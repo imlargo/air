@@ -1,0 +1,12 @@
+{
+  "name": "air-bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@imlargo/air": "link:..",
+    "axios": "latest",
+    "esbuild": "latest",
+    "ky": "latest",
+    "ofetch": "latest"
+  }
+}

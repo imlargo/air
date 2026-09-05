@@ -73,6 +73,7 @@
     "smoke": "pnpm build && node scripts/smoke.mjs",
     "examples": "pnpm build && node scripts/examples.mjs",
     "demo": "pnpm build && node examples/demo.mjs",
+    "bench": "pnpm build && pnpm --dir bench install && node bench/run.mjs",
     "prepublishOnly": "pnpm build",
     "prepare": "husky || true"
   },

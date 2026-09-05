@@ -568,7 +568,11 @@ pnpm check      # format check, lint, typecheck, tests, build
 pnpm test:watch
 pnpm examples   # build, then run examples/ against a local server
 pnpm demo       # build, then run examples/demo.mjs against real endpoints
+pnpm bench      # build, then compare against the latest ky, ofetch and axios
 ```
+
+The benchmark also runs on demand in CI, from the Actions tab, and prints its report as the run
+summary. The figures in this README come from it.
 
 See [CHANGELOG.md](./CHANGELOG.md) for releases and [CONTRIBUTING.md](./CONTRIBUTING.md) for
 the design rules.

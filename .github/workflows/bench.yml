@@ -1,0 +1,39 @@
+name: Bench
+
+# Manual only. Installs the latest ky, ofetch and axios next to the local build of air, runs
+# bench/, and publishes the report as the run summary and as an artifact. Numbers from a shared
+# runner are noisier than from a workstation; compare within a run, not across runs.
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: Rounds per measurement (fresh process per client and round)
+        default: '5'
+        required: false
+
+env:
+  HUSKY: 0
+
+jobs:
+  bench:
+    name: Compare against ky, ofetch and axios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --dir bench install
+      - run: node bench/run.mjs >> "$GITHUB_STEP_SUMMARY"
+        env:
+          BENCH_ROUNDS: ${{ inputs.rounds }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-report
+          path: |
+            bench/report.md
+            bench/report.json

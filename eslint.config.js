@@ -36,11 +36,13 @@ export default defineConfig(
     // already knows about for src/ and test/ via lib.dom.d.ts. Hand-maintained rather
     // than pulling in the `globals` package: a devDependency for a lint config is still a
     // devDependency. Alphabetical, so adding one is obvious.
-    files: ['examples/**', 'scripts/**'],
+    files: ['examples/**', 'scripts/**', 'bench/**'],
     languageOptions: {
       globals: {
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        Blob: 'readonly',
+        Buffer: 'readonly',
         File: 'readonly',
         FormData: 'readonly',
         Headers: 'readonly',
@@ -48,6 +50,7 @@ export default defineConfig(
         Request: 'readonly',
         Response: 'readonly',
         TextDecoderStream: 'readonly',
+        TextDecoder: 'readonly',
         TextEncoder: 'readonly',
         TransformStream: 'readonly',
         URL: 'readonly',
