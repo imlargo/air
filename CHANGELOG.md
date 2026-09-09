@@ -10,6 +10,8 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-09
+
 ### Changed
 
 - **Per-request overhead cut to about a third.** Over a stubbed `fetch`, `bench/` measured
@@ -400,7 +402,8 @@ dependencies.
 No timeout or retry options, by design. `AbortSignal.timeout()` and a `for` loop cover both,
 and the README shows how.
 
-[Unreleased]: https://github.com/imlargo/air/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/imlargo/air/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/imlargo/air/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/imlargo/air/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/imlargo/air/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/imlargo/air/compare/v0.5.0...v1.0.0
