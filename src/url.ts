@@ -6,7 +6,9 @@ type QueryRecord = Record<string, QueryValue | readonly QueryValue[]>
 // doubled slash from string concatenation is the far more common input.
 const ABSOLUTE = /^[a-z][a-z\d+\-.]*:\/\//i
 
-const EXTENDS_BASE = /^[?#]/
+const SLASH = 47 // '/'
+const QUESTION = 63 // '?'
+const HASH = 35 // '#'
 
 export function toQueryRecord(query: Query): QueryRecord {
   if (!(query instanceof URLSearchParams) && !Array.isArray(query)) {
@@ -25,11 +27,19 @@ export function toQueryRecord(query: Query): QueryRecord {
 
 // String join rather than `new URL(path, base)`, which would drop a path prefix on the base.
 export function joinURL(baseURL: string | URL | undefined, path: string): string {
-  if (!baseURL || ABSOLUTE.test(path)) return path
+  if (!baseURL) return path
+  // A path that starts with a slash cannot be absolute, so the common case skips the regex.
+  const first = path.charCodeAt(0)
+  if (first !== SLASH && ABSOLUTE.test(path)) return path
   const base = typeof baseURL === 'string' ? baseURL : baseURL.href
   if (!path) return base
-  if (EXTENDS_BASE.test(path)) return base + path
-  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+  if (first === QUESTION || first === HASH) return base + path
+
+  let end = base.length
+  while (end > 0 && base.charCodeAt(end - 1) === SLASH) end--
+  let start = 0
+  while (path.charCodeAt(start) === SLASH) start++
+  return `${base.slice(0, end)}/${path.slice(start)}`
 }
 
 export function buildURL(path: string, baseURL?: string | URL, query?: Query): string {

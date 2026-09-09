@@ -12,6 +12,15 @@ the outside does not get a line here; the git history already has it.
 
 ### Changed
 
+- **Per-request overhead cut to about a third.** Over a stubbed `fetch`, `bench/` measured
+  5.6 µs of overhead per call and now measures under 2 µs, less than ofetch. A request builds
+  its `Headers` once instead of three times, a chain of `create()` calls folds every header
+  source into that single object rather than one per level, and static header sources no longer
+  pass through the microtask queue. `baseURL` joining and `Content-Type` detection skip their
+  regular expressions in the common case. One visible detail: `AirError.request.options.headers`
+  is now the source as given when only the client or only the request supplied headers, and a
+  merged function only when both did. It is a function whenever a function was involved, as
+  before.
 - **`engines.node` is now `>=22`**, up from `>=20`. Node 20 reached end of life in April 2026,
   and the CI matrix now runs 22 and 24. Not a breaking change under this project's policy: the
   library itself is unchanged and runs wherever it did.

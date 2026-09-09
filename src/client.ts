@@ -12,7 +12,6 @@ import type {
   HeaderInit,
   HeaderSource,
   Query,
-  SignalSource,
 } from './types.js'
 
 // V8-only. Read through a structural type rather than a global augmentation, so the code
@@ -24,38 +23,76 @@ interface V8ErrorConstructor {
   ) => void
 }
 
-const resolveHeaders = async (source?: HeaderSource): Promise<HeaderInit | undefined> =>
-  typeof source === 'function' ? source() : source
+// A header or signal source is either a value or a function that produces one.
+const resolve = <T>(source: T | (() => T)): T =>
+  typeof source === 'function' ? (source as () => T)() : source
 
-const resolveSignal = (source?: SignalSource | null): AbortSignal | null | undefined =>
-  typeof source === 'function' ? source() : source
+const isThenable = (value: unknown): value is PromiseLike<HeaderInit> =>
+  typeof (value as { then?: unknown } | undefined)?.then === 'function'
 
 // Records are applied key by key: the Headers constructor would send `null` and `undefined`
-// as the strings "null" and "undefined".
+// as the strings "null" and "undefined". A Headers is read directly, already combined per name.
 function applyHeaders(target: Headers, source?: HeaderInit): void {
   if (!source) return
 
   if (source instanceof Headers || Array.isArray(source)) {
-    new Headers(source).forEach((value, key) => {
+    for (const [key, value] of Array.isArray(source) ? new Headers(source) : source) {
       target.set(key, value)
-    })
+    }
     return
   }
 
-  for (const [key, value] of Object.entries(source)) {
+  for (const key in source) {
+    const value = source[key]
     if (value === null || value === undefined) target.delete(key)
     else target.set(key, value)
   }
 }
 
-// A closure, so neither source is resolved until a request is made.
-function mergeHeaders(base?: HeaderSource, extra?: HeaderSource): () => Promise<Headers> {
-  return async () => {
-    const headers = new Headers()
-    applyHeaders(headers, await resolveHeaders(base))
-    applyHeaders(headers, await resolveHeaders(extra))
-    return headers
+// Applies each source in turn onto one Headers. Stays synchronous until a source returns a
+// promise, so a request with static headers never waits on the microtask queue for them.
+function fold(
+  target: Headers,
+  sources: readonly HeaderSource[],
+  from: number,
+): Headers | Promise<Headers> {
+  for (let i = from; i < sources.length; i++) {
+    const value = resolve<HeaderInit | Promise<HeaderInit> | undefined>(sources[i])
+    if (isThenable(value)) {
+      return Promise.resolve(value).then((resolved) => {
+        applyHeaders(target, resolved)
+        return fold(target, sources, i + 1)
+      })
+    }
+    applyHeaders(target, value)
   }
+  return target
+}
+
+// A merged header source is a function, so nothing is resolved until a request is made, and it
+// carries the flat list it was merged from, so a chain of create() calls folds into a single
+// Headers at request time instead of one per level.
+const SOURCES = Symbol('air.headers')
+
+type MergedHeaders = (() => Headers | Promise<Headers>) & {
+  [SOURCES]: readonly HeaderSource[]
+}
+
+const NONE: readonly HeaderSource[] = []
+
+const sourcesOf = (source?: HeaderSource): readonly HeaderSource[] =>
+  source == null ? NONE : ((source as Partial<MergedHeaders>)[SOURCES] ?? [source])
+
+function mergeHeaders(
+  base?: HeaderSource,
+  extra?: HeaderSource,
+): HeaderSource | undefined {
+  if (!base || !extra) return base ?? extra
+  const sources = [...sourcesOf(base), ...sourcesOf(extra)]
+  const merged: MergedHeaders = Object.assign(() => fold(new Headers(), sources, 0), {
+    [SOURCES]: sources,
+  })
+  return merged
 }
 
 // Folded to records first: spreading a URLSearchParams yields {}.
@@ -65,13 +102,15 @@ function mergeQuery(base?: Query, extra?: Query): Query | undefined {
 }
 
 // Every request passes through here exactly once, so request() only ever sees merged options.
-function merge(base: AnyOptions, extra: AnyOptions = {}): AnyOptions {
-  return {
+function merge(base: AnyOptions, extra: AnyOptions = {}, method?: string): AnyOptions {
+  const merged: AnyOptions = {
     ...base,
     ...extra,
     headers: mergeHeaders(base.headers, extra.headers),
     query: mergeQuery(base.query, extra.query),
   }
+  if (method) merged.method = method
+  return merged
 }
 
 function reasonFor(error: unknown, fallback: string): string {
@@ -90,7 +129,11 @@ function fail(message: string, info: AirRequest, init?: AirErrorInit): never {
   throw error
 }
 
-async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> {
+async function request(
+  path: AirURL,
+  options: AnyOptions,
+  raw: boolean,
+): Promise<unknown> {
   // Defaulted here rather than at module scope, so a `fetch` stubbed or polyfilled after
   // import is the one used.
   const {
@@ -108,15 +151,15 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
   const url = buildURL(typeof path === 'string' ? path : path.href, baseURL, query)
   const verb = method.toUpperCase()
 
-  const requestHeaders = new Headers()
-  applyHeaders(requestHeaders, await resolveHeaders(headers))
+  const folded = fold(new Headers(), sourcesOf(headers), 0)
+  const requestHeaders = folded instanceof Headers ? folded : await folded
 
   let payload: BodyInit | undefined
-  let duplex: 'half' | undefined
   if (verb !== 'GET' && verb !== 'HEAD') {
     const prepared = prepareBody(body)
     payload = prepared.body
-    duplex = prepared.duplex
+    // A caller's `duplex` wins over the one a stream body needs.
+    if (prepared.duplex) init.duplex ??= prepared.duplex
     if (prepared.stripContentType) {
       requestHeaders.delete('content-type')
     } else if (prepared.contentType && !requestHeaders.has('content-type')) {
@@ -124,17 +167,15 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
     }
   }
 
-  const info: AirRequest = { url, method: verb, headers: requestHeaders, options }
-
   // After the headers, so an `AbortSignal.timeout()` budget is not spent on an async header
   // function.
-  const signal = resolveSignal(signalSource)
+  const signal = resolve<AbortSignal | null | undefined>(signalSource)
+
+  const info: AirRequest = { url, method: verb, headers: requestHeaders, options }
 
   let response: Response
   try {
-    // `init` after `duplex`, so a caller's value wins.
     response = await send(url, {
-      ...(duplex ? { duplex } : {}),
       ...init,
       method: verb,
       headers: requestHeaders,
@@ -154,7 +195,8 @@ async function request(path: AirURL, options: AnyOptions): Promise<AirResponse> 
   }
 
   try {
-    return { data: await parseResponse(response, parse), response }
+    const data = await parseResponse(response, parse)
+    return raw ? ({ data, response } satisfies AirResponse) : data
   } catch (error) {
     const reason = reasonFor(error, 'returned an unreadable body')
     fail(`${verb} ${url} ${reason}`, info, { response, cause: error })
@@ -175,19 +217,17 @@ function verbs<M>(make: (method: string) => M) {
 
 /** Creates a client with the given defaults. `air` is `create()` with none. */
 export function create(defaults: AirOptions = {}): AirClient {
-  const settle = (options?: AnyOptions, method?: string): AnyOptions =>
-    method ? { ...merge(defaults, options), method } : merge(defaults, options)
+  const data =
+    (method?: string) =>
+    <T = unknown>(url: AirURL, options?: AnyOptions) =>
+      request(url, merge(defaults, options, method), false) as Promise<T | null>
 
   const raw =
     (method?: string) =>
     <T = unknown>(url: AirURL, options?: AnyOptions) =>
-      request(url, settle(options, method)) as Promise<AirResponse<T | null>>
-
-  const data = (method?: string) => {
-    const send = raw(method)
-    return <T = unknown>(url: AirURL, options?: AnyOptions): Promise<T | null> =>
-      send<T>(url, options).then((result) => result.data)
-  }
+      request(url, merge(defaults, options, method), true) as Promise<
+        AirResponse<T | null>
+      >
 
   return Object.assign(data(), verbs(data), {
     raw: Object.assign(raw(), verbs(raw)),
