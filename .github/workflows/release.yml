@@ -27,6 +27,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - run: pnpm install --frozen-lockfile
+      # `lint` and `typecheck` both cover bench/, which needs its own competitors installed;
+      # see the same step in ci.yml.
+      - run: pnpm --dir bench install
 
       # A tag that disagrees with package.json publishes a version nobody can
       # trace back to a commit. Fail here instead.
