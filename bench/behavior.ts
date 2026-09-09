@@ -194,7 +194,7 @@ const cases: Case[] = [
       })
       return search().replace(/Wed.*Time\)/, '<Date.toString()>')
     },
-    note: "`air` and `ky` reject both values in their query types, so this row is what their runtime does with the types bypassed, as this file does. `ofetch` types the value as `Record<string, any>` and `axios` as `any`, so for those two it is the behaviour a user meets. air's supported form for dates and nested objects is `toQueryParams()` from `@imlargo/air/query`, which writes ISO strings and `filter[since]` keys.",
+    note: "`air` and `ky` reject both values in their query types, so this row is what their runtime does with the types bypassed, as this file does: air refuses rather than guess, `ky` writes whatever `String()` returns. `ofetch` types the value as `Record<string, any>` and `axios` as `any`, so for those two it is the behaviour a user meets. air's supported form for dates and nested objects is `toQueryParams()` from `@imlargo/air/query`, which writes ISO strings and `filter[since]` keys.",
   },
   {
     label: '`FormData` body, content type sent',
