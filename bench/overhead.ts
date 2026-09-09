@@ -2,7 +2,7 @@
 // a different random order every round.
 
 import { clientNames, type Config } from './clients.ts'
-import { inChild, median, quantile, shuffled, table } from './lib.ts'
+import { inChild, median, shuffled, spread, table } from './lib.ts'
 
 type Pooled = Record<string, number[]>
 
@@ -28,12 +28,7 @@ export async function overhead({ rounds = 5 } = {}) {
   const rows = names.map((name) => {
     const d = results.defaults[name] ?? []
     const m = results.matched[name] ?? []
-    return [
-      `\`${name}\``,
-      `${us(median(d))} (${us(quantile(d, 0.25))} – ${us(quantile(d, 0.75))})`,
-      `+${us(median(d) - baseline)}`,
-      us(median(m)),
-    ]
+    return [`\`${name}\``, spread(d, us), `+${us(median(d) - baseline)}`, spread(m, us)]
   })
   return {
     markdown: table(
@@ -41,7 +36,7 @@ export async function overhead({ rounds = 5 } = {}) {
         'Client',
         'Defaults: median (p25 – p75)',
         'Over fetch',
-        'Matched features: median',
+        'Matched features: median (p25 – p75)',
       ],
       rows,
     ),
