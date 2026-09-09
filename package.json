@@ -1,7 +1,7 @@
 {
   "name": "@imlargo/air",
   "type": "module",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A tiny, modern HTTP client for TypeScript. Built on native fetch.",
   "license": "MIT",
   "sideEffects": false,
