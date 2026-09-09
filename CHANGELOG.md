@@ -10,6 +10,25 @@ the outside does not get a line here; the git history already has it.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A query value the types reject is now refused at runtime instead of stringified.** The
+  `query` option has always typed its values as primitives, but a `Date` or an object still
+  arrives through `any`, a cast or parsed JSON, and the client wrote
+  `when=Thu+Jan+01+1970+...` or `nested=[object+Object]` into the URL without a word. It now
+  throws a `TypeError` naming the key, before the request is sent. Not a breaking change under
+  this project's policy: the value was never part of the supported input, and the behaviour it
+  replaces produced a URL nobody asked for. Dates and nested objects still have a supported
+  form, `toQueryParams()` from `@imlargo/air/query`. The check costs the root entry 0.15 kB
+  gzip, which is why the README now says 2.3 kB rather than 2.1 kB.
+
+### Changed
+
+- **The README leads with the behaviour table** the benchmark records: what each library does
+  with a `204`, an empty body, an unclosed `text/event-stream`, and a header removed with
+  `null`. It also states who maintains the project and what that means for the risk of
+  depending on it.
+
 ## [2.2.0] - 2026-09-09
 
 ### Changed

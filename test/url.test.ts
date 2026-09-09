@@ -224,12 +224,35 @@ describe('query', () => {
     expect(requests[0]!.url).toBe('https://api.test/s?page=9&key=abc')
   })
 
-  it('rejects values it cannot serialize meaningfully', async () => {
+  it('rejects a Date at runtime as well as in the types', async () => {
     mockFetch()
-    await air.get('https://api.test/s', {
-      // @ts-expect-error a Date has no obvious serialization; pass an ISO string
-      query: { when: new Date(0) },
-    })
+    await expect(
+      air.get('https://api.test/s', {
+        // @ts-expect-error a Date has no obvious serialization; pass an ISO string
+        query: { when: new Date(0) },
+      }),
+    ).rejects.toThrow(TypeError)
+  })
+
+  it('names the offending key and points at the escape hatch', async () => {
+    mockFetch()
+    await expect(
+      air.get('https://api.test/s', {
+        // @ts-expect-error a nested object has no serialization the client picks for you
+        query: { filter: { since: 1 } },
+      }),
+    ).rejects.toThrow(/Query value for "filter" is of type object.*toQueryParams/s)
+  })
+
+  it('rejects a nested object inside an array, and sends nothing', async () => {
+    const requests = mockFetch()
+    await expect(
+      air.get('https://api.test/s', {
+        // @ts-expect-error same reason, one level down
+        query: { tags: ['a', { b: 1 }] },
+      }),
+    ).rejects.toThrow(TypeError)
+    expect(requests).toHaveLength(0)
   })
 
   it('merges client defaults with per-request query', async () => {

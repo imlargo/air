@@ -6,15 +6,39 @@
 [![npm](https://img.shields.io/npm/v/@imlargo/air)](https://www.npmjs.com/package/@imlargo/air)
 [![size](https://img.shields.io/bundlejs/size/@imlargo/air)](https://bundlejs.com/?q=@imlargo/air)
 
-- Zero runtime dependencies. ESM only. The client is 2 kB min+gzip.
+- Zero runtime dependencies. ESM only. The client is 2.3 kB min+gzip.
 - A call resolves to the parsed body. Non-2xx responses throw, with the parsed error body.
 - Types that do not lie: a `204` is `null` and the signature says so; a `Date` in a query is a
-  compile error; `unknown` by default, never `any`.
+  compile error, and refused at runtime rather than stringified; `unknown` by default, never
+  `any`.
 - No hidden behavior: no default timeout, no silent retry, no request you did not ask for.
 - Bring your own `fetch`. Anything an interceptor would do is a function around it, and retry,
   token refresh and progress ship as such functions under their own imports.
 - Node 22+, Bun and Deno verified in CI on every commit; browsers and edge runtimes on the same
   baseline APIs.
+
+## Behavior
+
+These libraries differ less in their APIs than in what they do when a response is unusual, and
+that is the part that changes the code you have to write. So it is recorded rather than
+described: every row below comes from [`bench/behavior.ts`](./bench/behavior.ts), which sends
+the same request through each library against a `fetch` stub. The Bench workflow regenerates
+the full table on demand.
+
+| Case                                          | air                   | ky                    | ofetch                | axios                   |
+| --------------------------------------------- | --------------------- | --------------------- | --------------------- | ----------------------- |
+| `204 No Content`                              | `null`                | throws `SyntaxError`  | `undefined`           | `""`                    |
+| `200`, empty body, JSON content type          | `null`                | throws `SyntaxError`  | `""`                  | `""`                    |
+| `text/event-stream` that never closes         | `ReadableStream`      | hangs                 | `ReadableStream`      | hangs                   |
+| Removing an inherited header with `null`      | absent                | sent as `"null"`      | sent as `"null"`      | absent                  |
+| A header from a function, re-read per request | supported             | not supported         | not supported         | not supported           |
+| `{ tags: ['a', 'b'], n: null }` in a query    | `tags=a&tags=b`       | `tags=a,b&n=null`     | `tags=a&tags=b&n`     | `tags[]=a&tags[]=b`     |
+| A `Date` in a query                           | throws `TypeError`    | locale string         | ISO string, quoted    | ISO string              |
+| A `FormData` body                             | `multipart/form-data` | `multipart/form-data` | `multipart/form-data` | `x-www-form-urlencoded` |
+
+A `404` carrying a JSON body is the one case where all four agree, so it is left out. air
+refuses a `Date` instead of picking a format for you; [`toQueryParams`](#query) writes the ISO
+string and bracket keys when that is what you want.
 
 ## Install
 
@@ -288,7 +312,9 @@ air.get('/search?q=air', { query: { tags: ['a', 'b'], page: 2, cursor: null } })
 - The existing search string is kept unchanged; new params are appended after it.
 - `undefined` and `null` are dropped. `false`, `0` and `''` are kept.
 - An array repeats the key. An empty array adds nothing.
-- Objects and `Date` are compile errors. Serialize them yourself: `{ since: date.toISOString() }`.
+- Objects and `Date` are compile errors, and throw a `TypeError` at runtime if the types are
+  bypassed. Serialize them yourself: `{ since: date.toISOString() }`, or use `toQueryParams`
+  below.
 - Declare a record's type with `type`, not `interface`.
 
 `query` also takes a `URLSearchParams` or a tuple list, keeping every value of a repeated key:
@@ -531,6 +557,17 @@ README and moved into the package when they showed up, in the same shape, across
 production codebases. If something is requested often and passes the test, it can be added,
 in the client or as another import path. If it is requested often and fails the test, the
 answer is a recipe here and a reason there. Open an issue either way.
+
+## Maintenance
+
+One person maintains this, which is worth knowing before you depend on it. What bounds the
+risk is the size: just under a thousand lines across twelve files, no runtime dependencies,
+MIT, and a thin layer over `fetch`, which is the part doing the real work and is maintained by
+your runtime. If this project stops, forking it is an afternoon, and the code you would
+inherit is the code you already read.
+
+While it is maintained, the promise is the one in [CONTRIBUTING.md](./CONTRIBUTING.md): the
+export list and the behaviour documented here do not change without a major version.
 
 ## Runtimes
 

@@ -42,6 +42,20 @@ export function joinURL(baseURL: string | URL | undefined, path: string): string
   return `${base.slice(0, end)}/${path.slice(start)}`
 }
 
+// The `Query` type rejects anything but a primitive, but a value still arrives through `any`,
+// a cast or parsed JSON. Writing `[object Object]` or a locale date string into a URL is worse
+// than refusing to send the request.
+function serialize(key: string, item: unknown): string {
+  if (typeof item === 'string') return item
+  if (typeof item === 'number' || typeof item === 'boolean' || typeof item === 'bigint') {
+    return String(item)
+  }
+  const kind = item instanceof Date ? 'a Date' : `of type ${typeof item}`
+  throw new TypeError(
+    `Query value for "${key}" is ${kind}, which has no agreed URL form. Pass a string, or use toQueryParams() from "@imlargo/air/query".`,
+  )
+}
+
 export function buildURL(path: string, baseURL?: string | URL, query?: Query): string {
   const url = joinURL(baseURL, path)
   if (!query) return url
@@ -49,7 +63,7 @@ export function buildURL(path: string, baseURL?: string | URL, query?: Query): s
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(toQueryRecord(query))) {
     for (const item of Array.isArray(value) ? value : [value]) {
-      if (item !== undefined && item !== null) params.append(key, String(item))
+      if (item !== undefined && item !== null) params.append(key, serialize(key, item))
     }
   }
   const search = params.toString()
