@@ -25,6 +25,22 @@ export const json = (data: unknown, init: ResponseInit = {}): Response => {
   return new Response(JSON.stringify(data), { ...init, headers })
 }
 
+// A permalink to the commit under test in CI, the default branch anywhere else.
+const REPOSITORY =
+  process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
+    ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/blob/${process.env.GITHUB_SHA ?? 'main'}`
+    : 'https://github.com/imlargo/air/blob/main'
+
+/**
+ * Links to the line that defines a case, found by searching the module for the case's own text
+ * when the report is generated, so the links do not rot as the file is edited.
+ */
+export function sourceLink(file: string, needle: string): string {
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8')
+  const line = source.slice(0, source.indexOf(needle)).split('\n').length
+  return `${REPOSITORY}/bench/${file.replace('./', '')}${source.includes(needle) ? `#L${line}` : ''}`
+}
+
 export function table(
   header: readonly string[],
   rows: readonly (readonly string[])[],
@@ -42,6 +58,16 @@ export const quantile = (values: readonly number[], q: number): number => {
   return sorted[index] ?? 0
 }
 export const median = (values: readonly number[]): number => quantile(values, 0.5)
+
+/**
+ * `median (p25 – p75)`, the one shape every table in the report uses. Quartiles rather than
+ * min–max: over tens of rounds the extremes are the machine's worst moment, not the library's.
+ */
+export const spread = (
+  values: readonly number[],
+  format: (value: number) => string,
+): string =>
+  `${format(median(values))} (${format(quantile(values, 0.25))} – ${format(quantile(values, 0.75))})`
 
 /** Coefficient of variation: standard deviation over the mean, as a fraction. */
 export function cv(values: readonly number[]): number {

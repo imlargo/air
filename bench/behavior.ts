@@ -5,7 +5,7 @@ import air, { type AirOptions } from '@imlargo/air'
 import ky, { type Options as KyOptions } from 'ky'
 import { ofetch, type FetchOptions } from 'ofetch'
 import axios, { type AxiosRequestConfig, type CreateAxiosDefaults } from 'axios'
-import { LIBS, json, table, type Lib } from './lib.ts'
+import { LIBS, json, sourceLink, table, type Lib } from './lib.ts'
 
 const BASE = 'https://bench.test/v1'
 
@@ -138,58 +138,67 @@ const sse = () =>
 
 const search = () => decodeURIComponent(seen().url.split('?')[1] ?? '')
 
-const cases: [string, (probe: Probe) => Promise<unknown>][] = [
-  [
-    '`204 No Content`',
-    (c) => {
+interface Case {
+  /** Also how the row finds its own line in this file, so it has to be the literal written. */
+  label: string
+  run: (probe: Probe) => Promise<unknown>
+  /** Rendered as a numbered footnote under the table. */
+  note?: string
+}
+
+const cases: Case[] = [
+  {
+    label: '`204 No Content`',
+    run: (c) => {
       stub(() => new Response(null, { status: 204 }))
       return c.get('/x')
     },
-  ],
-  [
-    '`200`, empty body, JSON content type',
-    (c) => {
+  },
+  {
+    label: '`200`, empty body, JSON content type',
+    run: (c) => {
       stub(() => new Response('', { headers: { 'content-type': 'application/json' } }))
       return c.get('/x')
     },
-  ],
-  [
-    '`404` with a JSON body',
-    (c) => {
+  },
+  {
+    label: '`404` with a JSON body',
+    run: (c) => {
       stub(() => json({ error: 'nope' }, { status: 404 }))
       return c.get('/x')
     },
-  ],
-  [
-    '`text/event-stream` that never closes',
-    (c) => {
+  },
+  {
+    label: '`text/event-stream` that never closes',
+    run: (c) => {
       stub(sse)
       return c.get('/events')
     },
-  ],
-  [
-    'Query `{ tags: [a, b], n: null, u: undefined }`',
-    async (c) => {
+  },
+  {
+    label: 'Query `{ tags: [a, b], n: null, u: undefined }`',
+    run: async (c) => {
       stub(() => json({}))
       await c.get('/s', {
         request: { [c.query]: { tags: ['a', 'b'], n: null, u: undefined } },
       })
       return search()
     },
-  ],
-  [
-    'Query `{ when: Date, nested: { a: 1 } }`',
-    async (c) => {
+  },
+  {
+    label: 'Query `{ when: Date, nested: { a: 1 } }`',
+    run: async (c) => {
       stub(() => json({}))
       await c.get('/s', {
         request: { [c.query]: { when: new Date(0), nested: { a: 1 } } },
       })
       return search().replace(/Wed.*Time\)/, '<Date.toString()>')
     },
-  ],
-  [
-    '`FormData` body, content type sent',
-    async (c) => {
+    note: "`air` and `ky` reject both values in their query types, so this row is what their runtime does with the types bypassed, as this file does. `ofetch` types the value as `Record<string, any>` and `axios` as `any`, so for those two it is the behaviour a user meets. air's supported form for dates and nested objects is `toQueryParams()` from `@imlargo/air/query`, which writes ISO strings and `filter[since]` keys.",
+  },
+  {
+    label: '`FormData` body, content type sent',
+    run: async (c) => {
       stub(() => json({}))
       const form = new FormData()
       form.set('a', '1')
@@ -199,10 +208,10 @@ const cases: [string, (probe: Probe) => Promise<unknown>][] = [
         'boundary=…',
       )
     },
-  ],
-  [
-    'Remove a client header with `null`',
-    async (c) => {
+  },
+  {
+    label: 'Remove a client header with `null`',
+    run: async (c) => {
       stub(() => json({}))
       await c.get('/x', {
         client: { headers: { Authorization: 'Bearer t' } },
@@ -211,10 +220,10 @@ const cases: [string, (probe: Probe) => Promise<unknown>][] = [
       const sent = seen().headers.authorization
       return sent === undefined ? 'absent' : `sent ${JSON.stringify(sent)}`
     },
-  ],
-  [
-    'Header from a function, per request',
-    async (c) => {
+  },
+  {
+    label: 'Header from a function, per request',
+    run: async (c) => {
       stub(() => json({}))
       let n = 0
       const client = { headers: () => ({ 'X-N': String(++n) }) }
@@ -222,19 +231,29 @@ const cases: [string, (probe: Probe) => Promise<unknown>][] = [
       await c.get('/x', { client })
       return seen().headers['x-n'] === '2' ? 'supported' : 'not supported'
     },
-  ],
+  },
 ]
 
 export async function behavior(): Promise<string> {
   const original = globalThis.fetch
   try {
     const rows: string[][] = []
-    for (const [label, run] of cases) {
+    const notes: string[] = []
+    for (const { label, run, note } of cases) {
       const cells: string[] = []
       for (const name of LIBS) cells.push(await attempt(() => run(probes[name])))
-      rows.push([label, ...cells.map((c) => c.replace(/\|/g, '\\|'))])
+      if (note) notes.push(note)
+      // Every row links to the code that produced it: a surprising cell should be one click
+      // from the request that caused it, not a claim to take on trust.
+      rows.push([
+        `[${label}](${sourceLink('./behavior.ts', label)})${note ? ` <sup>${notes.length}</sup>` : ''}`,
+        ...cells.map((c) => c.replace(/\|/g, '\\|')),
+      ])
     }
-    return table(['Case', ...LIBS.map((l) => `\`${l}\``)], rows)
+    return [
+      table(['Case', ...LIBS.map((l) => `\`${l}\``)], rows),
+      ...notes.map((note, index) => `${index + 1}. ${note}`),
+    ].join('\n\n')
   } finally {
     globalThis.fetch = original
   }
