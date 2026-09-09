@@ -16,7 +16,12 @@ const STREAMING = new Set([
 ])
 
 function detect(contentType: string | null): ParseMode {
-  const type = contentType?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+  if (!contentType) return 'blob'
+  const end = contentType.indexOf(';')
+  const raw = end === -1 ? contentType : contentType.slice(0, end)
+  // The overwhelmingly common value, matched before the normalizing pass it does not need.
+  if (raw === 'application/json') return 'json'
+  const type = raw.trim().toLowerCase()
   // Before `text/*`: `text/event-stream` is a stream, not a document.
   if (STREAMING.has(type)) return 'stream'
   if (type === 'application/json' || type.endsWith('+json')) return 'json'
